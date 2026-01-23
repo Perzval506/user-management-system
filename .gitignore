@@ -5,9 +5,12 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Env
+# Env (ignore real secrets)
 .env
 .env.*
+
+# BUT allow the example template
+!.env.example
 
 # Build
 dist/
