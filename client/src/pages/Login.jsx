@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import "../styles/auth.css";
 
 export default function Login() {
   const { login } = useAuth();
@@ -24,36 +25,48 @@ export default function Login() {
   };
 
   return (
-    <div style={{ maxWidth: 420, margin: "64px auto", padding: 16 }}>
-      <h2>Login</h2>
-      <form onSubmit={onSubmit}>
-        <label>Email</label>
-        <input
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="you@example.com"
-          style={{ width: "100%", marginBottom: 12 }}
-        />
+    <div className="auth-page">
+      <div className="auth-card">
+        <div className="auth-header">
+          <h1>Sign in</h1>
+          <p>User Management System</p>
+        </div>
 
-        <label>Password</label>
-        <input
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          type="password"
-          placeholder="••••••••"
-          style={{ width: "100%", marginBottom: 12 }}
-        />
+        {error && <div className="alert alert-error">{error}</div>}
 
-        {error && <p style={{ color: "crimson" }}>{error}</p>}
+        <form onSubmit={onSubmit}>
+          <div className="field">
+            <label>Email</label>
+            <input
+              className="input"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              autoComplete="email"
+            />
+          </div>
 
-        <button type="submit" style={{ width: "100%" }}>
-          Sign in
-        </button>
-      </form>
+          <div className="field">
+            <label>Password</label>
+            <input
+              className="input"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              type="password"
+              placeholder="••••••••"
+              autoComplete="current-password"
+            />
+          </div>
 
-      <p style={{ marginTop: 12, fontSize: 12, opacity: 0.7 }}>
-        Note: endpoint currently expects POST /api/auth/login.
-      </p>
+          <button className="btn btn-primary" type="submit">
+            Sign in
+          </button>
+        </form>
+
+        <p className="helper">
+          Note: endpoint currently expects POST <code>/api/auth/login</code>.
+        </p>
+      </div>
     </div>
   );
 }
