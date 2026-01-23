@@ -18,3 +18,13 @@ build/
 
 # OS
 .DS_Store
+
+# Ignore real env files (secrets)
+.env
+.env.*
+server/.env
+server/.env.*
+
+# Allow example template
+!.env.example
+server/.env.example
