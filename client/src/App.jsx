@@ -1,45 +1,46 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/Login";
-import OwnerDashboard from "./pages/OwnerDashboard";
-import StaffProfile from "./pages/StaffProfile";
-import AuditLogs from "./pages/AuditLogs";
-import Settings from "./pages/Settings";
-import ProtectedRoute from "./routes/ProtectedRoute";
-import { useAuth } from "./context/AuthContext";
-import AppLayout from "./components/AppLayout";
+import Admin from "./pages/Admin";
+import Staff from "./pages/Staff";
 
-function HomeRedirect() {
-  const { user, isAuthed } = useAuth();
-  if (!isAuthed) return <Navigate to="/login" replace />;
+function ProtectedRoute({ children, role }) {
+  const token = localStorage.getItem("token");
+  const user = JSON.parse(localStorage.getItem("user") || "null");
 
-  if (user?.role === "owner") return <Navigate to="/owner" replace />;
-  if (user?.role === "staff") return <Navigate to="/staff" replace />;
-  return <Navigate to="/login" replace />;
+  if (!token || !user) return <Navigate to="/login" replace />;
+  if (role && user.role !== role) return <Navigate to="/login" replace />;
+
+  return children;
 }
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<HomeRedirect />} />
-      <Route path="/login" element={<Login />} />
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login" element={<Login />} />
 
-      {/* Owner-only pages inside layout */}
-      <Route element={<ProtectedRoute allowedRoles={["owner"]} />}>
-        <Route element={<AppLayout />}>
-          <Route path="/owner" element={<OwnerDashboard />} />
-          <Route path="/audit" element={<AuditLogs />} />
-          <Route path="/settings" element={<Settings />} />
-        </Route>
-      </Route>
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute role="OWNER">
+              <Admin />
+            </ProtectedRoute>
+          }
+        />
 
-      {/* Staff-only pages inside layout */}
-      <Route element={<ProtectedRoute allowedRoles={["staff"]} />}>
-        <Route element={<AppLayout />}>
-          <Route path="/staff" element={<StaffProfile />} />
-        </Route>
-      </Route>
+        <Route
+          path="/staff"
+          element={
+            <ProtectedRoute role="STAFF">
+              <Staff />
+            </ProtectedRoute>
+          }
+        />
 
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        {/* Default route */}
+        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
