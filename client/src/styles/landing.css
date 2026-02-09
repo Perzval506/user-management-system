@@ -1,0 +1,222 @@
+/* Minimal landing (Boyd’s mockup style) */
+
+.lp{
+  min-height: 100vh;
+  background: #f0b77b; /* warm peach */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Top logo: smaller white container, bigger logo */
+.lp-topLogo{
+  margin-top: 20px;
+  width: 78px;
+  height: 78px;
+  border-radius: 18px;
+  background: rgba(255,255,255,0.70);
+  display: grid;
+  place-items: center;
+  box-shadow: 0 18px 40px rgba(0,0,0,0.12);
+}
+
+.lp-topLogo img{
+  width: 70px;
+  height: 70px;
+  object-fit: contain;
+}
+
+/* Main layout */
+.lp-wrap{
+  width: min(1100px, 92vw);
+  margin-top: 70px;
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  align-items: center;
+  gap: 40px;
+}
+
+.lp-left{
+  display: grid;
+  place-items: center;
+}
+
+/* Bigger pizza */
+.lp-pizza{
+  width: min(520px, 78vw);
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+  filter: drop-shadow(0 24px 46px rgba(0,0,0,0.20));
+}
+
+.lp-right{
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Landing alignment tuning (add class lp-rightTuned on Landing.jsx) */
+.lp-rightTuned{
+  justify-content: center;
+  transform: translateY(-6px);
+}
+
+.lp-title{
+  margin: 0;
+  font-size: 64px;
+  line-height: 1;
+  font-weight: 800;
+  color: #c85b19; /* orange-brown */
+  letter-spacing: 0.2px;
+  max-width: 520px;
+}
+
+.lp-subtitle{
+  margin: 0;
+  font-size: 44px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.88);
+  max-width: 520px;
+}
+
+.lp-actions{
+  margin-top: 28px;
+  display: flex;
+  gap: 18px;
+  align-items: center;
+}
+
+.lp-actionsCenter{
+  justify-content: center;
+}
+
+.lp-btn{
+  min-width: 170px;
+  padding: 14px 22px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 18px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lp-btnSolid{
+  background: #c85b19;
+  color: white;
+  box-shadow: 0 14px 30px rgba(200,91,25,0.25);
+}
+
+.lp-btnSolid:hover{
+  transform: translateY(-1px);
+}
+
+.lp-btnOutline{
+  background: transparent;
+  border-color: rgba(200,91,25,0.65);
+  color: rgba(255,255,255,0.9);
+}
+
+.lp-btnOutline:hover{
+  background: rgba(255,255,255,0.10);
+}
+
+/* =========================
+   INFO PAGE CENTERING
+   ========================= */
+
+/* Make wrapper fully centered for Info page */
+.lp-wrapCenter{
+  grid-template-columns: 1fr;
+  place-items: center;
+  margin-top: 70px;
+}
+
+/* True centered layout */
+.lp-center{
+  width: min(820px, 92vw);
+  margin-top: 0;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.lp-titleInfo{
+  font-size: 58px;
+}
+
+.lp-subtitleInfo{
+  font-size: 30px;
+  line-height: 1.3;
+  max-width: 760px;
+  margin-top: 6px;
+  color: rgba(255,255,255,0.88);
+}
+
+/* Info card improved */
+.lp-infoCard{
+  margin: 22px auto 0;
+  width: min(620px, 92vw);
+  background: rgba(255,255,255,0.22);
+  border: 1px solid rgba(255,255,255,0.30);
+  border-radius: 18px;
+  padding: 18px 18px 10px;
+  box-shadow: 0 18px 40px rgba(0,0,0,0.10);
+}
+
+.lp-infoRow{
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 6px;
+  border-bottom: 1px solid rgba(255,255,255,0.22);
+}
+
+.lp-infoRow:last-child{ border-bottom: none; }
+
+.lp-label{
+  color: rgba(255,255,255,0.85);
+  font-weight: 700;
+}
+
+.lp-value{
+  color: rgba(255,255,255,0.92);
+  font-weight: 600;
+}
+
+/* Responsive */
+@media (max-width: 900px){
+  .lp-wrap{
+    grid-template-columns: 1fr;
+    margin-top: 40px;
+    gap: 24px;
+  }
+
+  .lp-right{
+    align-items: center;
+    text-align: center;
+  }
+
+  .lp-rightTuned{
+    transform: none;
+  }
+
+  .lp-title{ font-size: 48px; max-width: 92vw; }
+  .lp-subtitle{ font-size: 34px; max-width: 92vw; }
+
+  .lp-actions{
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .lp-wrapCenter{
+    margin-top: 40px;
+  }
+
+  .lp-titleInfo{ font-size: 46px; }
+  .lp-subtitleInfo{ font-size: 24px; }
+}

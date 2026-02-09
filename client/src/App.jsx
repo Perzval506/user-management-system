@@ -1,46 +1,57 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import Login from "./pages/Login";
-import Admin from "./pages/Admin";
-import Staff from "./pages/Staff";
+import { Routes, Route, Navigate } from "react-router-dom";
 
-function ProtectedRoute({ children, role }) {
+import Landing from "./pages/Landing.jsx";
+import Login from "./pages/Login.jsx";
+import Admin from "./pages/Admin.jsx";
+import Staff from "./pages/Staff.jsx";
+import Info from "./pages/Info.jsx";
+
+function ProtectedRoute({ children, allowedRoles }) {
   const token = localStorage.getItem("token");
-  const user = JSON.parse(localStorage.getItem("user") || "null");
+  const rawUser = localStorage.getItem("user");
+  const user = rawUser ? JSON.parse(rawUser) : null;
 
   if (!token || !user) return <Navigate to="/login" replace />;
-  if (role && user.role !== role) return <Navigate to="/login" replace />;
+
+  if (allowedRoles?.length && !allowedRoles.includes(user.role)) {
+    return <Navigate to="/" replace />;
+  }
 
   return children;
 }
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<Login />} />
+    <Routes>
+      {/* ✅ LANDING PAGE FIRST */}
+      <Route path="/" element={<Landing />} />
 
-        <Route
-          path="/admin"
-          element={
-            <ProtectedRoute role="OWNER">
-              <Admin />
-            </ProtectedRoute>
-          }
-        />
+      <Route path="/info" element={<Info />} />
 
-        <Route
-          path="/staff"
-          element={
-            <ProtectedRoute role="STAFF">
-              <Staff />
-            </ProtectedRoute>
-          }
-        />
+      {/* Public */}
+      <Route path="/login" element={<Login />} />
 
-        {/* Default route */}
-        <Route path="/" element={<Navigate to="/login" replace />} />
-        <Route path="*" element={<Navigate to="/login" replace />} />
-      </Routes>
-    </BrowserRouter>
+      {/* Protected */}
+      <Route
+        path="/admin"
+        element={
+          <ProtectedRoute allowedRoles={["OWNER"]}>
+            <Admin />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/staff"
+        element={
+          <ProtectedRoute allowedRoles={["CASHIER", "STOCKROOM_STAFF"]}>
+            <Staff />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Fallback */}
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }
