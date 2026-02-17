@@ -6,7 +6,7 @@ export default function ProtectedRoute({ allowedRoles }) {
 
   if (!isAuthed) return <Navigate to="/login" replace />;
 
-  const role = user?.role; // expected: "owner" or "staff" (adjust if backend differs)
+  const role = user?.role; 
   if (allowedRoles?.length && !allowedRoles.includes(role)) {
     return <Navigate to="/login" replace />;
   }
