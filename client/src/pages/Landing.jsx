@@ -20,16 +20,17 @@ export default function Landing() {
 
   return (
     <div className="lp">
+      {/* background pizza (cropped) */}
+      <img className="lp-pizzaBg" src={pizzaImg} alt="" aria-hidden="true" />
+
+      {/* top logo */}
       <div className="lp-topLogo">
         <img src={boydsLogo} alt="Boyd’s Pizza House" />
       </div>
 
-      <div className="lp-wrap">
-        <div className="lp-left">
-          <img className="lp-pizza" src={pizzaImg} alt="Pizza" />
-        </div>
-
-        <div className="lp-right lp-rightTuned">
+      {/* centered text */}
+      <div className="lp-centerWrap">
+        <div>
           <h1 className="lp-title">Boyd’s Pizza House</h1>
           <h2 className="lp-subtitle">User Management System</h2>
 
