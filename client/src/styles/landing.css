@@ -1,101 +1,92 @@
-/* Minimal landing (Boyd’s mockup style) */
+/* Landing + Info styles */
 
 .lp{
   min-height: 100vh;
   background: #f0b77b; /* warm peach */
+  position: relative;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   align-items: center;
 }
 
-/* Top logo: smaller white container, bigger logo */
+/* Top logo */
 .lp-topLogo{
-  margin-top: 20px;
-  width: 78px;
-  height: 78px;
-  border-radius: 18px;
+  margin-top: 22px;
+  width: 86px;
+  height: 86px;
+  border-radius: 20px;
   background: rgba(255,255,255,0.70);
   display: grid;
   place-items: center;
   box-shadow: 0 18px 40px rgba(0,0,0,0.12);
+  z-index: 3;
 }
 
 .lp-topLogo img{
-  width: 70px;
-  height: 70px;
+  width: 72px;
+  height: 72px;
   object-fit: contain;
 }
 
-/* Main layout */
-.lp-wrap{
-  width: min(1100px, 92vw);
-  margin-top: 70px;
-  display: grid;
-  grid-template-columns: 1fr 1.2fr;
-  align-items: center;
-  gap: 40px;
-}
-
-.lp-left{
-  display: grid;
-  place-items: center;
-}
-
-/* Bigger pizza */
-.lp-pizza{
-  width: min(520px, 78vw);
-  aspect-ratio: 1 / 1;
+/* BIG pizza on left, cropped */
+.lp-pizzaBg{
+  position: absolute;
+  left: -300px;        /* controls crop amount */
+  bottom: -230px;      /* push down like redesign */
+  width: 800px;        /* pizza size */
+  height: 620px;
   object-fit: contain;
   filter: drop-shadow(0 24px 46px rgba(0,0,0,0.20));
+  z-index: 1;
+  pointer-events: none;
+  user-select: none;
 }
 
-.lp-right{
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
+/* Center content */
+.lp-centerWrap{
+  flex: 1;
+  width: min(980px, 92vw);
+  display: grid;
+  place-items: center;
+  text-align: center;
+  z-index: 2;
+  padding: 40px 18px 60px;
 
-/* Landing alignment tuning (add class lp-rightTuned on Landing.jsx) */
-.lp-rightTuned{
-  justify-content: center;
-  transform: translateY(-6px);
+  transform: translateY(-40px); /* ✅ move up (try -20px to -50px) */
 }
 
 .lp-title{
   margin: 0;
-  font-size: 64px;
-  line-height: 1;
-  font-weight: 800;
-  color: #c85b19; /* orange-brown */
+  font-size: 52px;         /* smaller than before */
+  line-height: 1.05;
+  font-weight: 850;
+  color: #c85b19;
   letter-spacing: 0.2px;
-  max-width: 520px;
 }
 
 .lp-subtitle{
-  margin: 0;
-  font-size: 44px;
-  font-weight: 700;
-  color: rgba(255,255,255,0.88);
-  max-width: 520px;
+  margin: 10px 0 0;
+  font-size: 22px;         /* smaller subtitle */
+  font-weight: 750;
+  color: rgba(255,255,255,0.90);
 }
 
 .lp-actions{
-  margin-top: 28px;
+  margin-top: 26px;
   display: flex;
   gap: 18px;
-  align-items: center;
-}
-
-.lp-actionsCenter{
   justify-content: center;
+  flex-wrap: wrap;
 }
 
+/* Buttons */
 .lp-btn{
   min-width: 170px;
   padding: 14px 22px;
   border-radius: 999px;
-  font-weight: 700;
-  font-size: 18px;
+  font-weight: 750;
+  font-size: 16px;          /* slightly smaller */
   cursor: pointer;
   border: 2px solid transparent;
   text-decoration: none;
@@ -117,7 +108,7 @@
 .lp-btnOutline{
   background: transparent;
   border-color: rgba(200,91,25,0.65);
-  color: rgba(255,255,255,0.9);
+  color: rgba(255,255,255,0.92);
 }
 
 .lp-btnOutline:hover{
@@ -125,20 +116,18 @@
 }
 
 /* =========================
-   INFO PAGE CENTERING
+   INFO PAGE CENTERING (kept)
    ========================= */
 
-/* Make wrapper fully centered for Info page */
 .lp-wrapCenter{
-  grid-template-columns: 1fr;
+  display: grid;
   place-items: center;
+  width: min(980px, 92vw);
   margin-top: 70px;
 }
 
-/* True centered layout */
 .lp-center{
   width: min(820px, 92vw);
-  margin-top: 0;
   text-align: center;
   display: flex;
   flex-direction: column;
@@ -146,18 +135,20 @@
 }
 
 .lp-titleInfo{
-  font-size: 58px;
+  font-size: 46px;
+  margin: 0;
+  font-weight: 850;
+  color: #c85b19;
 }
 
 .lp-subtitleInfo{
-  font-size: 30px;
-  line-height: 1.3;
-  max-width: 760px;
-  margin-top: 6px;
-  color: rgba(255,255,255,0.88);
+  font-size: 18px;
+  line-height: 1.35;
+  max-width: 900px;
+  margin-top: 10px;
+  color: rgba(255,255,255,0.90);
 }
 
-/* Info card improved */
 .lp-infoCard{
   margin: 22px auto 0;
   width: min(620px, 92vw);
@@ -180,43 +171,24 @@
 
 .lp-label{
   color: rgba(255,255,255,0.85);
-  font-weight: 700;
+  font-weight: 750;
 }
 
 .lp-value{
   color: rgba(255,255,255,0.92);
-  font-weight: 600;
+  font-weight: 650;
 }
 
 /* Responsive */
 @media (max-width: 900px){
-  .lp-wrap{
-    grid-template-columns: 1fr;
-    margin-top: 40px;
-    gap: 24px;
+  .lp-pizzaBg{
+    left: -260px;
+    bottom: -180px;
+    width: 520px;
+    height: 520px;
+    opacity: 0.95;
   }
 
-  .lp-right{
-    align-items: center;
-    text-align: center;
-  }
-
-  .lp-rightTuned{
-    transform: none;
-  }
-
-  .lp-title{ font-size: 48px; max-width: 92vw; }
-  .lp-subtitle{ font-size: 34px; max-width: 92vw; }
-
-  .lp-actions{
-    justify-content: center;
-    flex-wrap: wrap;
-  }
-
-  .lp-wrapCenter{
-    margin-top: 40px;
-  }
-
-  .lp-titleInfo{ font-size: 46px; }
-  .lp-subtitleInfo{ font-size: 24px; }
+  .lp-title{ font-size: 40px; }
+  .lp-subtitle{ font-size: 18px; }
 }
