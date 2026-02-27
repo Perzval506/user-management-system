@@ -13,8 +13,8 @@ export default function Login() {
     setErr("");
 
     try {
-      // Adjust endpoint if your backend differs
-      const res = await api.post("/api/auth/login", { email, password });
+      // Use API base (`/api` is already included in baseURL)
+      const res = await api.post("/auth/login", { username: email, password });
       const token = res.data?.token || res.data?.accessToken;
       const user = res.data?.user;
 
@@ -26,7 +26,7 @@ export default function Login() {
       if (user.role === "OWNER") navigate("/admin");
       else navigate("/staff");
     } catch (e2) {
-      setErr(e2?.message || "Login failed");
+      setErr(e2?.response?.data?.message || e2?.message || "Login failed");
     }
   };
 

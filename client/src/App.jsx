@@ -5,6 +5,11 @@ import Info from "./pages/Info.jsx";
 import Login from "./pages/Login.jsx";
 
 import Admin from "./pages/Admin.jsx";
+import AdminIngredients from "./pages/AdminIngredients.jsx";
+import AdminMenu from "./pages/AdminMenu.jsx";
+import AdminIngredientAdd from "./pages/AdminIngredientAdd.jsx";
+import AdminMenuAdd from "./pages/AdminMenuAdd.jsx";
+import AdminRecipes from "./pages/AdminRecipes.jsx";
 import Staff from "./pages/Staff.jsx";
 import AuditLogs from "./pages/AuditLogs.jsx";
 import Settings from "./pages/Settings.jsx";
@@ -24,6 +29,14 @@ export default function App() {
       <Route element={<ProtectedRoute allowedRoles={["OWNER"]} />}>
         <Route element={<AppShell />}>
           <Route path="/admin" element={<Admin />} />
+          <Route path="/admin/items/add" element={<AdminIngredientAdd />} />
+          <Route path="/admin/items/manage" element={<AdminIngredients />} />
+          <Route path="/admin/ingredients" element={<AdminIngredients />} />
+
+          <Route path="/admin/menu/add" element={<AdminMenuAdd />} />
+          <Route path="/admin/menu/manage" element={<AdminMenu />} />
+          <Route path="/admin/menu" element={<AdminMenu />} />
+          <Route path="/admin/menu/recipes" element={<AdminRecipes />} />
           <Route path="/audit" element={<AuditLogs />} />
           <Route path="/settings" element={<Settings />} />
         </Route>

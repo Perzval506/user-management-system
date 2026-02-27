@@ -1,4 +1,5 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useState } from "react";
 import "../styles/shell.css";
 
 function safeUser() {
@@ -53,11 +54,15 @@ export default function AppShell() {
   const role = user?.role || "UNKNOWN";
   const name = user?.name || user?.fullName || user?.email || "User";
 
+  const [openItems, setOpenItems] = useState(false);
+  const [openMenu, setOpenMenu] = useState(false);
+
   const nav =
     role === "OWNER"
       ? [
           { to: "/admin", label: "Dashboard", icon: Icons.dashboard },
           { to: "/admin", label: "My Staff", icon: Icons.users },
+          // Items & Menu dropdowns inserted below instead of list entries
           { to: "/audit", label: "Audit Logs", icon: Icons.audit },
           { to: "/settings", label: "Settings", icon: Icons.settings },
         ]
@@ -81,7 +86,73 @@ export default function AppShell() {
         </div>
 
         <nav className="nav">
-          {nav.map((i) => (
+          {/* Owner-specific ordered nav: Dashboard, My Staff, Items, Menu, then others */}
+          {role === "OWNER" && (
+            <>
+              <NavLink to="/admin" className={({ isActive }) => `navLink ${isActive ? "active" : ""}`} onClick={() => { setOpenItems(false); setOpenMenu(false); }}>
+                <span className="ico">{Icons.dashboard}</span>
+                <span>Dashboard</span>
+              </NavLink>
+
+              <NavLink to="/admin" className={({ isActive }) => `navLink ${isActive ? "active" : ""}`} onClick={() => { setOpenItems(false); setOpenMenu(false); }}>
+                <span className="ico">{Icons.users}</span>
+                <span>My Staff</span>
+              </NavLink>
+
+              <div style={{ position: "relative" }}>
+                <button
+                  type="button"
+                  className="navLink"
+                  onClick={() => { setOpenItems((s) => !s); setOpenMenu(false); }}
+                  style={{ display: "flex", alignItems: "center", gap: 8 }}
+                >
+                  <span className="ico">{Icons.users}</span>
+                  <span>Items ▾</span>
+                </button>
+
+                {openItems && (
+                  <div style={{ position: "absolute", left: 0, top: "100%", marginTop: 6, minWidth: 200, zIndex: 40 }}>
+                    <div style={{ background: "white", borderRadius: 8, boxShadow: "0 6px 18px rgba(0,0,0,0.12)", overflow: "hidden" }}>
+                      <div className="navLink" onClick={() => { navigate('/admin/items/add'); setOpenItems(false); }} style={{ cursor: 'pointer', padding: '10px 12px' }}>Add Ingredient</div>
+                      <div className="navLink" onClick={() => { navigate('/admin/items/manage'); setOpenItems(false); }} style={{ cursor: 'pointer', padding: '10px 12px' }}>Manage Ingredients</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div style={{ position: "relative" }}>
+                <button
+                  type="button"
+                  className="navLink"
+                  onClick={() => { setOpenMenu((s) => !s); setOpenItems(false); }}
+                  style={{ display: "flex", alignItems: "center", gap: 8 }}
+                >
+                  <span className="ico">{Icons.dashboard}</span>
+                  <span>Menu ▾</span>
+                </button>
+
+                {openMenu && (
+                  <div style={{ position: "absolute", left: 0, top: "100%", marginTop: 6, minWidth: 220, zIndex: 40 }}>
+                    <div style={{ background: "white", borderRadius: 8, boxShadow: "0 6px 18px rgba(0,0,0,0.12)", overflow: "hidden" }}>
+                      <div className="navLink" onClick={() => { navigate('/admin/menu/add'); setOpenMenu(false); }} style={{ cursor: 'pointer', padding: '10px 12px' }}>Add Menu Item</div>
+                      <div className="navLink" onClick={() => { navigate('/admin/menu/manage'); setOpenMenu(false); }} style={{ cursor: 'pointer', padding: '10px 12px' }}>Manage Menu Items</div>
+                      <div className="navLink" onClick={() => { navigate('/admin/menu/recipes'); setOpenMenu(false); }} style={{ cursor: 'pointer', padding: '10px 12px' }}>Recipe</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* render remaining owner nav entries (audit, settings) */}
+              {nav.slice(2).map((i) => (
+                <NavLink key={i.label} to={i.to} className={({ isActive }) => `navLink ${isActive ? "active" : ""}`} onClick={() => { setOpenItems(false); setOpenMenu(false); }}>
+                  <span className="ico">{i.icon}</span>
+                  <span>{i.label}</span>
+                </NavLink>
+              ))}
+            </>
+          )}
+
+          {role !== "OWNER" && nav.map((i) => (
             <NavLink
               key={i.label}
               to={i.to}

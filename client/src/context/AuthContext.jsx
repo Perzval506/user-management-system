@@ -13,26 +13,31 @@ export function AuthProvider({ children }) {
   const isAuthed = !!token;
 
   const login = async ({ email, password }) => {
-    // Adjust endpoint later to match backend
-    const res = await api.post("/api/auth/login", { email, password });
+    try {
+      // Backend expects `/api` in baseURL; send `username` field
+      const res = await api.post("/auth/login", { username: email, password });
 
-    // Supports common response shapes:
-    // { token, user } OR { accessToken, user } OR { token, data: { user } }
-    const newToken =
-      res.data?.token || res.data?.accessToken || res.data?.data?.token;
-    const newUser =
-      res.data?.user || res.data?.data?.user || res.data?.profile;
+      // Supports common response shapes:
+      // { token, user } OR { accessToken, user } OR { token, data: { user } }
+      const newToken =
+        res.data?.token || res.data?.accessToken || res.data?.data?.token;
+      const newUser =
+        res.data?.user || res.data?.data?.user || res.data?.profile;
 
-    if (!newToken || !newUser) {
-      throw new Error("Login response missing token/user");
+      if (!newToken || !newUser) {
+        throw new Error("Login response missing token/user");
+      }
+
+      localStorage.setItem("token", newToken);
+      localStorage.setItem("user", JSON.stringify(newUser));
+      setToken(newToken);
+      setUser(newUser);
+
+      return newUser;
+    } catch (err) {
+      const msg = err?.response?.data?.message || err?.message || "Login failed";
+      throw new Error(msg);
     }
-
-    localStorage.setItem("token", newToken);
-    localStorage.setItem("user", JSON.stringify(newUser));
-    setToken(newToken);
-    setUser(newUser);
-
-    return newUser;
   };
 
   const logout = () => {
