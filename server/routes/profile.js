@@ -7,7 +7,7 @@ router.get("/staff/:userId", async (req, res) => {
   const { userId } = req.params;
 
   const [rows] = await pool.query(
-    `SELECT u.id, u.full_name, u.username, u.email, u.phone, u.role, u.status,
+    `SELECT u.id, u.full_name, u.first_name, u.last_name, u.username, u.email, u.phone, u.role, u.status,
             up.address, up.gender, up.birthdate, up.avatar_url,
             up.emergency_contact_name, up.emergency_contact_phone,
             sd.employee_no, sd.position_title, sd.hire_date, sd.shift_start, sd.shift_end, sd.notes
@@ -27,6 +27,8 @@ router.put("/staff/:userId", async (req, res) => {
 
   const {
     full_name,
+    first_name,
+    last_name,
     email, phone,
     address, gender, birthdate, avatar_url,
     emergency_contact_name, emergency_contact_phone,
@@ -34,9 +36,13 @@ router.put("/staff/:userId", async (req, res) => {
   } = req.body;
 
   // Update users table: include full_name if provided
+  const finalFull = (full_name && String(full_name).trim()) ? String(full_name).trim() : `${(first_name||"").trim()} ${(last_name||"").trim()}`.trim() || null;
+  const firstVal = (first_name && String(first_name).trim()) ? String(first_name).trim() : (finalFull ? finalFull.split(' ')[0] : null);
+  const lastVal = (last_name && String(last_name).trim()) ? String(last_name).trim() : (finalFull ? finalFull.split(' ').slice(1).join(' ') : null);
+
   await pool.query(
-    "UPDATE users SET full_name = COALESCE(?, full_name), email = COALESCE(?, email), phone = COALESCE(?, phone) WHERE id = ?",
-    [full_name || null, email || null, phone || null, userId]
+    "UPDATE users SET full_name = COALESCE(?, full_name), first_name = COALESCE(?, first_name), last_name = COALESCE(?, last_name), email = COALESCE(?, email), phone = COALESCE(?, phone) WHERE id = ?",
+    [finalFull, firstVal, lastVal, email || null, phone || null, userId]
   );
 
   await pool.query(

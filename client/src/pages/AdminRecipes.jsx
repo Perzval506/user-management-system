@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import api from "../services/api";
+import useUnits from "../hooks/useUnits";
 
 export default function AdminRecipes() {
   const [menuItems, setMenuItems] = useState([]);
@@ -9,6 +10,8 @@ export default function AdminRecipes() {
   const [adding, setAdding] = useState(false);
   const [newLine, setNewLine] = useState({ ingredient_id: "", qty_used: "", qty_unit: "" });
   const [err, setErr] = useState("");
+  const [saving, setSaving] = useState(false);
+  const units = useUnits();
 
   useEffect(() => {
     loadLists();
@@ -38,16 +41,85 @@ export default function AdminRecipes() {
     setAdding(false);
   }
 
+  function updateLine(id, patch) {
+    setLines((ls) => ls.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  }
+
   function removeLine(id) {
     setLines((l) => l.filter((x) => x.id !== id));
   }
 
   async function saveRecipe() {
-    // TODO: Integrate with backend recipe endpoints if available.
-    // If an endpoint exists, POST the recipe version and lines here using `api`.
-    console.log('Would save recipe for menu_item_id=', selectedMenu, 'lines=', lines);
-    alert('Save logic not implemented: see TODO in code.');
+    if (!selectedMenu) return setErr('Select a menu item first');
+    if (!Array.isArray(lines) || lines.length === 0) return setErr('No lines to save');
+    // client-side validation
+    if (!units || units.length === 0) {
+      // allow saving but warn
+      console.warn('Units list empty, server will validate');
+    }
+    for (const ln of lines) {
+      if (!ln.ingredient_id) return setErr('Each line must have an ingredient');
+      const q = Number(ln.qty_used);
+      if (!isFinite(q) || q <= 0) return setErr('Each line must have qty > 0');
+      if (units && units.length && !units.includes(ln.qty_unit)) return setErr('Invalid unit on one or more lines');
+    }
+
+    setErr('');
+    setSaving(true);
+    try {
+      const payload = { ingredients: lines.map((ln) => ({
+        ingredient_id: Number(ln.ingredient_id),
+        qty_used: Number(ln.qty_used),
+        qty_unit: ln.qty_unit,
+        yield_percent: ln.yield_percent || null
+      })) };
+      await api.put(`/menu/${selectedMenu}/recipe`, payload);
+      alert('Recipe saved');
+      // reload saved recipe lines
+      const res = await api.get(`/menu/${selectedMenu}/recipe`);
+      if (res && res.data) {
+        setLines(Array.isArray(res.data.ingredients) ? res.data.ingredients.map((r) => ({
+          id: r.id || Date.now() + Math.random(),
+          ingredient_id: r.ingredient_id,
+          qty_used: r.qty_used,
+          qty_unit: r.qty_unit,
+          yield_percent: r.yield_percent
+        })) : []);
+      }
+    } catch (e) {
+      setErr(e?.response?.data?.error || e?.response?.data?.message || e?.message || 'Save failed');
+    } finally {
+      setSaving(false);
+    }
   }
+
+  // load recipe when a menu is selected
+  useEffect(() => {
+    let mounted = true;
+    async function loadRecipe() {
+      if (!selectedMenu) return setLines([]);
+      try {
+        const res = await api.get(`/menu/${selectedMenu}/recipe`);
+        if (!mounted) return;
+        if (res && res.data && Array.isArray(res.data.ingredients)) {
+          setLines(res.data.ingredients.map((r) => ({
+            id: r.id || Date.now() + Math.random(),
+            ingredient_id: r.ingredient_id,
+            qty_used: r.qty_used,
+            qty_unit: r.qty_unit,
+            yield_percent: r.yield_percent
+          })));
+        } else {
+          setLines([]);
+        }
+      } catch (err) {
+        if (!mounted) return;
+        setErr(err?.response?.data?.message || err?.message || 'Failed to load recipe');
+      }
+    }
+    loadRecipe();
+    return () => { mounted = false; };
+  }, [selectedMenu]);
 
   return (
     <div style={{ maxWidth: 1000, margin: '30px auto', padding: 12 }}>
@@ -80,7 +152,10 @@ export default function AdminRecipes() {
             <input value={newLine.qty_used} onChange={(e) => setNewLine({ ...newLine, qty_used: e.target.value })} className="input" />
 
             <label>Unit</label>
-            <input value={newLine.qty_unit} onChange={(e) => setNewLine({ ...newLine, qty_unit: e.target.value })} className="input" />
+            <select value={newLine.qty_unit} onChange={(e) => setNewLine({ ...newLine, qty_unit: e.target.value })} className="input">
+              <option value="">-- select unit --</option>
+              {(units || []).map((u) => <option key={u} value={u}>{u}</option>)}
+            </select>
 
             <div style={{ marginTop: 8 }}>
               <button className="btn btn-primary" onClick={saveLine}>Save Line</button>
@@ -102,9 +177,21 @@ export default function AdminRecipes() {
             <tbody>
               {lines.map((ln) => (
                 <tr key={ln.id} style={{ borderTop: '1px solid #eee' }}>
-                  <td>{(ingredients.find((x) => String(x.id) === String(ln.ingredient_id)) || {}).ingredient_name || '-'}</td>
-                  <td>{ln.qty_used}</td>
-                  <td>{ln.qty_unit}</td>
+                  <td>
+                    <select value={ln.ingredient_id} onChange={(e) => updateLine(ln.id, { ingredient_id: e.target.value })} className="input">
+                      <option value="">-- select ingredient --</option>
+                      {ingredients.map((ig) => <option key={ig.id} value={ig.id}>{ig.ingredient_name}</option>)}
+                    </select>
+                  </td>
+                  <td>
+                    <input value={ln.qty_used} onChange={(e) => updateLine(ln.id, { qty_used: e.target.value })} className="input" />
+                  </td>
+                  <td>
+                    <select value={ln.qty_unit} onChange={(e) => updateLine(ln.id, { qty_unit: e.target.value })} className="input">
+                      <option value="">-- select unit --</option>
+                      {(units || []).map((u) => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                  </td>
                   <td><button className="btn btn-ghost" onClick={() => removeLine(ln.id)}>Remove</button></td>
                 </tr>
               ))}
@@ -116,7 +203,7 @@ export default function AdminRecipes() {
         </div>
 
         <div style={{ marginTop: 12 }}>
-          <button className="btn btn-primary" onClick={saveRecipe} disabled={!selectedMenu || lines.length === 0}>Save Recipe</button>
+          <button className="btn btn-primary" onClick={saveRecipe} disabled={!selectedMenu || lines.length === 0 || saving}>{saving ? 'Saving...' : 'Save Recipe'}</button>
         </div>
       </div>
     </div>

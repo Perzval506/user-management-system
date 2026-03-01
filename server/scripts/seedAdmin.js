@@ -16,9 +16,11 @@ const pool = require("../db");
 
   const password_hash = await bcrypt.hash(password, 10);
 
+  const first = full_name.split(' ')[0] || null;
+  const last = full_name.split(' ').slice(1).join(' ') || null;
   await pool.execute(
-    "INSERT INTO users (full_name, username, password_hash, role, status) VALUES (?, ?, ?, 'OWNER', 'ACTIVE')",
-    [full_name, username, password_hash]
+    "INSERT INTO users (full_name, first_name, last_name, username, password_hash, role, status) VALUES (?, ?, ?, ?, ?, 'OWNER', 'ACTIVE')",
+    [full_name, first, last, username, password_hash]
   );
 
   console.log("Seeded admin:", username, "password:", password);

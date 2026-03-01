@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS ingredients (
   ingredient_name VARCHAR(120) NOT NULL,
   category VARCHAR(80) NULL,
   base_unit VARCHAR(20) NOT NULL,            -- e.g., kg, g, L, mL, pc
+  base_unit_qty DECIMAL(12,3) NULL,
   status ENUM('ACTIVE','INACTIVE') NOT NULL DEFAULT 'ACTIVE',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

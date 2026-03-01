@@ -4,6 +4,8 @@ USE user_management;
 CREATE TABLE IF NOT EXISTS users (
   id INT AUTO_INCREMENT PRIMARY KEY,
   full_name VARCHAR(100) NOT NULL,
+  first_name VARCHAR(50) NULL,
+  last_name VARCHAR(50) NULL,
   username VARCHAR(50) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
   role ENUM('OWNER','STAFF') NOT NULL DEFAULT 'STAFF',

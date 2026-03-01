@@ -40,7 +40,7 @@ export default function Login() {
 
         <form onSubmit={onSubmit} style={{ marginTop: 16, display: "grid", gap: 12 }}>
           <div>
-            <div className="small muted" style={{ marginBottom: 6 }}>Email</div>
+            <div className="small muted" style={{ marginBottom: 6 }}>Username</div>
             <input className="input" value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
 

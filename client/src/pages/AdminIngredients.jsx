@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import api from "../services/api";
 import { useNavigate } from "react-router-dom";
+import useUnits from "../hooks/useUnits";
 
 const emptyForm = {
   ingredient_name: "",
   category: "",
-  base_unit: "pcs",
+  base_unit: "",
+  base_unit_qty: "",
   status: "ACTIVE",
 };
 
@@ -24,6 +26,8 @@ export default function AdminIngredients() {
   const [mode, setMode] = useState("create"); // create | edit
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
+  // units from server meta endpoint
+  const units = useUnits();
 
   const visibleItems = useMemo(() => {
     if (showInactive) return items;
@@ -61,7 +65,8 @@ export default function AdminIngredients() {
     setForm({
       ingredient_name: row.ingredient_name ?? "",
       category: row.category ?? "",
-      base_unit: row.base_unit ?? "pcs",
+      base_unit: row.base_unit ?? "",
+      base_unit_qty: row.base_unit_qty ?? "",
       status: row.status ?? "ACTIVE",
     });
     setOpen(true);
@@ -87,17 +92,21 @@ export default function AdminIngredients() {
       setError("Ingredient name is required.");
       return;
     }
-    if (!form.base_unit.trim()) {
-      setError("Base unit is required.");
-      return;
-    }
+    if (!form.base_unit_qty && form.base_unit_qty !== 0) { setError("Base unit quantity is required."); return; }
+    const qty = Number(String(form.base_unit_qty).trim());
+    if (!isFinite(qty) || qty <= 0) { setError("Base unit quantity must be a number greater than 0."); return; }
+    if (!form.base_unit.trim()) { setError("Base unit is required."); return; }
+    const bu = String(form.base_unit).trim().toLowerCase();
+    if (!units.length) { setError(`Units not loaded`); return; }
+    if (!units.includes(bu)) { setError(`Invalid base unit. Allowed: ${units.join(',')}`); return; }
 
     try {
       if (mode === "create") {
         await api.post("/ingredients", {
           ingredient_name: form.ingredient_name.trim(),
           category: form.category.trim() || null,
-          base_unit: form.base_unit.trim(),
+          base_unit: bu,
+          base_unit_qty: qty,
           status: form.status || "ACTIVE",
         });
         setMsg("Ingredient created.");
@@ -105,7 +114,8 @@ export default function AdminIngredients() {
         await api.put(`/ingredients/${editingId}`, {
           ingredient_name: form.ingredient_name.trim(),
           category: form.category.trim() || null,
-          base_unit: form.base_unit.trim(),
+          base_unit: bu,
+          base_unit_qty: qty,
           status: form.status || "ACTIVE",
         });
         setMsg("Ingredient updated.");
@@ -194,7 +204,7 @@ export default function AdminIngredients() {
                   {/* ✅ No ID column */}
                   <th align="left">Name</th>
                   <th align="left">Category</th>
-                  <th align="left">Base Unit</th>
+                  <th align="left">Base unit size</th>
                   <th align="left">Status</th>
                   <th align="left">Actions</th>
                 </tr>
@@ -204,7 +214,7 @@ export default function AdminIngredients() {
                   <tr key={row.id} style={{ borderTop: "1px solid #444" }}>
                     <td>{row.ingredient_name}</td>
                     <td>{row.category || "-"}</td>
-                    <td>{row.base_unit}</td>
+                    <td>{row.base_unit_qty ? `${row.base_unit_qty} ${row.base_unit}` : (row.base_unit || '-')}</td>
                     <td>{row.status}</td>
                     <td style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <button onClick={() => openEdit(row)} style={btnMini}>Edit</button>
@@ -265,14 +275,14 @@ export default function AdminIngredients() {
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 <div style={fieldWrap}>
-                  <label style={label}>Base Unit</label>
-                  <input
-                    name="base_unit"
-                    value={form.base_unit}
-                    onChange={onChange}
-                    style={input}
-                    placeholder="pcs / g / kg / ml"
-                  />
+                  <label style={label}>Base unit size</label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input name="base_unit_qty" value={form.base_unit_qty} onChange={onChange} style={input} type="number" step="0.001" min="0.001" placeholder="e.g., 1.000" />
+                    <select name="base_unit" value={form.base_unit} onChange={onChange} style={input}>
+                      <option value="">-- select unit --</option>
+                      {units.map(u => (<option key={u} value={u}>{u}</option>))}
+                    </select>
+                  </div>
                 </div>
 
                 <div style={fieldWrap}>

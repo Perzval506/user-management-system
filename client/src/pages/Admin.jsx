@@ -26,7 +26,8 @@ export default function Admin() {
   const [view, setView] = useState("LIST"); // LIST | CREATE | EDIT
 
   const [form, setForm] = useState({
-    full_name: "",
+    first_name: "",
+    last_name: "",
     username: "",
     password: "",
     role: "CASHIER",
@@ -72,10 +73,18 @@ export default function Admin() {
     setMsg("");
 
     try {
-      await api.post("/users", form);
+      // construct full_name from first and last
+      const full = `${(form.first_name || "").trim()} ${(form.last_name || "").trim()}`.trim();
+      const payload = { ...form, full_name: full };
+      // remove first_name/last_name fields sent to server to avoid extra columns
+      delete payload.first_name;
+      delete payload.last_name;
+
+      await api.post("/users", payload);
 
       setForm({
-        full_name: "",
+        first_name: "",
+        last_name: "",
         username: "",
         password: "",
         role: "CASHIER",
@@ -484,13 +493,23 @@ export default function Admin() {
           <h3 style={{ marginTop: 0 }}>Create User</h3>
 
           <form onSubmit={createUser} style={{ display: "grid", gap: 10, maxWidth: 520 }}>
-            <input
-              placeholder="Full name"
-              value={form.full_name}
-              onChange={(e) => setForm({ ...form, full_name: e.target.value })}
-              style={{ padding: 10 }}
-              required
-            />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                placeholder="First name"
+                value={form.first_name}
+                onChange={(e) => setForm({ ...form, first_name: e.target.value })}
+                style={{ padding: 10, flex: 1 }}
+                required
+              />
+
+              <input
+                placeholder="Last name"
+                value={form.last_name}
+                onChange={(e) => setForm({ ...form, last_name: e.target.value })}
+                style={{ padding: 10, flex: 1 }}
+                required
+              />
+            </div>
 
             <input
               placeholder="Username"

@@ -1,27 +1,36 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../services/api";
+import useUnits from "../hooks/useUnits";
 
 export default function AdminIngredientAdd() {
   const nav = useNavigate();
-  const [form, setForm] = useState({ ingredient_name: "", category: "", base_unit: "pcs", status: "ACTIVE" });
+  const [form, setForm] = useState({ ingredient_name: "", category: "", base_unit: "", base_unit_qty: "", status: "ACTIVE" });
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
+  const units = useUnits();
 
   async function onSubmit(e) {
     e.preventDefault();
     setErr("");
     if (!form.ingredient_name.trim()) return setErr("Ingredient name is required");
+    if (!form.base_unit_qty && form.base_unit_qty !== 0) return setErr("Base unit quantity is required");
+    const qty = Number(String(form.base_unit_qty).trim());
+    if (!isFinite(qty) || qty <= 0) return setErr("Base unit quantity must be a number greater than 0");
     if (!form.base_unit.trim()) return setErr("Base unit is required");
+    const bu = String(form.base_unit).trim().toLowerCase();
+    if (!units.length) return setErr('Units not loaded');
+    if (!units.includes(bu)) return setErr(`Invalid base unit. Allowed: ${units.join(',')}`);
 
     try {
       setSaving(true);
-      await api.post("/ingredients", {
-        ingredient_name: form.ingredient_name.trim(),
-        category: form.category.trim() || null,
-        base_unit: form.base_unit.trim(),
-        status: form.status || "ACTIVE",
-      });
+        await api.post("/ingredients", {
+          ingredient_name: form.ingredient_name.trim(),
+          category: form.category.trim() || null,
+          base_unit: bu,
+          base_unit_qty: qty,
+          status: form.status || "ACTIVE",
+        });
       nav("/admin/items/manage");
     } catch (e) {
       setErr(e?.response?.data?.message || e?.message || "Create failed");
@@ -47,8 +56,14 @@ export default function AdminIngredientAdd() {
         </div>
 
         <div>
-          <label>Base unit</label>
-          <input value={form.base_unit} onChange={(e) => setForm({ ...form, base_unit: e.target.value })} className="input" />
+          <label>Base unit size</label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input name="base_unit_qty" value={form.base_unit_qty} onChange={(e) => setForm({ ...form, base_unit_qty: e.target.value })} className="input" type="number" step="0.001" min="0.001" placeholder="e.g., 1.000" />
+            <select name="base_unit" value={form.base_unit} onChange={(e) => setForm({ ...form, base_unit: e.target.value })} className="input">
+              <option value="">-- select unit --</option>
+              {units.map(u => (<option key={u} value={u}>{u}</option>))}
+            </select>
+          </div>
         </div>
 
         <div>

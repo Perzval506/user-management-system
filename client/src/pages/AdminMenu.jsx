@@ -1,11 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react";
 import api from "../services/api";
+import RecipeBuilder from "../components/RecipeBuilder";
+import ConfirmModal from "../components/ConfirmModal";
+import CreateRecipeModal from "../components/CreateRecipeModal";
 import { useNavigate } from "react-router-dom";
 
 const emptyForm = {
   menu_name: "",
   description: "",
   status: "ACTIVE",
+  price: "",
+  size: "",
 };
 
 export default function AdminMenu() {
@@ -22,6 +27,9 @@ export default function AdminMenu() {
   const [mode, setMode] = useState("create"); // create | edit
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
+  // recipe modal
+  const [openRecipe, setOpenRecipe] = useState(false);
+  const [recipeMenuId, setRecipeMenuId] = useState(null);
 
   const visibleItems = useMemo(() => {
     if (showInactive) return items;
@@ -60,8 +68,56 @@ export default function AdminMenu() {
       menu_name: row.menu_name ?? "",
       description: row.description ?? "",
       status: row.status ?? "ACTIVE",
+      price: "",
+      size: "",
     });
     setOpen(true);
+  }
+
+  function openRecipeEditor(row) {
+    setRecipeMenuId(row.id);
+    setOpenRecipe(true);
+  }
+
+  function openCreateRecipe(row) {
+    setRecipeMenuId(row.id);
+    setCreateRecipeInitialName(row.menu_name || '');
+    setShowCreateRecipe(true);
+  }
+
+  function handleCloseRecipe() {
+    try {
+      const key = `recipe_draft:${recipeMenuId}`;
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        // show modal to confirm discard
+        setShowConfirmDiscard(true);
+        return;
+      }
+    } catch (e) {}
+    setOpenRecipe(false);
+  }
+
+  const [showConfirmDiscard, setShowConfirmDiscard] = useState(false);
+
+  function confirmDiscardAndClose() {
+    try { localStorage.removeItem(`recipe_draft:${recipeMenuId}`); } catch (e) {}
+    setShowConfirmDiscard(false);
+    setOpenRecipe(false);
+  }
+  const [showCreateRecipe, setShowCreateRecipe] = useState(false);
+  const [createRecipeInitialName, setCreateRecipeInitialName] = useState('');
+
+  async function handleCreateRecipe({ recipe_name, recipe_description }) {
+    try {
+      await api.post(`/menu/${recipeMenuId}/create-recipe`, { recipe_name, recipe_description });
+      setShowCreateRecipe(false);
+      // open editor now that recipe exists
+      setOpenRecipe(true);
+      await load();
+    } catch (e) {
+      alert('Failed to create recipe');
+    }
   }
 
   function closeModal() {
@@ -87,11 +143,21 @@ export default function AdminMenu() {
 
     try {
       if (mode === "create") {
-        await api.post("/menu", {
-          menu_name: form.menu_name.trim(),
+        let finalName = form.menu_name.trim();
+        if (form.size && form.size.trim()) finalName = `${finalName} (${form.size.trim()})`;
+
+        const payload = {
+          menu_name: finalName,
           description: form.description.trim() || null,
           status: form.status || "ACTIVE",
-        });
+        };
+        if (form.price !== undefined && form.price !== null && form.price !== "") {
+          const p = parseFloat(form.price);
+          if (Number.isNaN(p)) { setError('Price must be numeric'); return; }
+          payload.selling_price = p;
+        }
+
+        await api.post("/menu", payload);
         setMsg("Menu item created.");
       } else {
         await api.put(`/menu/${editingId}`, {
@@ -151,6 +217,7 @@ export default function AdminMenu() {
           <button onClick={() => nav("/admin")} style={btnSecondary}>Back</button>
           <button onClick={load} style={btnSecondary}>Refresh</button>
           <button onClick={openCreate} style={btnPrimary}>Create Menu Item</button>
+          
         </div>
       </div>
 
@@ -197,6 +264,18 @@ export default function AdminMenu() {
                     <td>{row.status}</td>
                     <td style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <button onClick={() => openEdit(row)} style={btnMini}>Edit</button>
+                        {row.recipe_version_id ? (
+                          <button onClick={() => openRecipeEditor(row)} style={btnMini}>Edit Recipe</button>
+                        ) : (
+                          <button onClick={() => openCreateRecipe(row)} style={btnMini}>Create Recipe</button>
+                        )}
+                        <button onClick={async () => {
+                          const price = prompt('Enter new selling price:');
+                          if (!price) return;
+                          const val = parseFloat(price);
+                          if (Number.isNaN(val)) { alert('Invalid price'); return; }
+                          try { await api.post(`/menu/${row.id}/price`, { selling_price: val }); alert('Price updated'); await load(); } catch(e){ alert('Price update failed'); }
+                        }} style={btnMini}>Update Price</button>
 
                       {row.status === "INACTIVE" ? (
                         <button onClick={() => activate(row)} style={btnMini}>Activate</button>
@@ -241,6 +320,25 @@ export default function AdminMenu() {
                 />
               </div>
 
+              {mode === 'create' && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 160px', gap: 10 }}>
+                  <div style={fieldWrap}>
+                    <label style={label}>Size (optional)</label>
+                    <select name="size" value={form.size} onChange={onChange} style={input}>
+                      <option value="">None</option>
+                      <option value="Double">Double</option>
+                      <option value="Family">Family</option>
+                      <option value="Regular">Regular</option>
+                    </select>
+                  </div>
+
+                  <div style={fieldWrap}>
+                    <label style={label}>Price (optional)</label>
+                    <input name="price" value={form.price} onChange={onChange} style={input} placeholder="0.00" />
+                  </div>
+                </div>
+              )}
+
               <div style={fieldWrap}>
                 <label style={label}>Description</label>
                 <textarea
@@ -270,6 +368,22 @@ export default function AdminMenu() {
           </div>
         </div>
       )}
+
+      {openRecipe && recipeMenuId && (
+        <div style={modalBackdrop} onClick={() => handleCloseRecipe()}>
+          <div style={modalCard} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0 }}>Recipe Builder</h3>
+              <button onClick={() => handleCloseRecipe()} style={btnGhost}>✕</button>
+            </div>
+            <div style={{ marginTop: 12 }}>
+              <RecipeBuilder menuId={recipeMenuId} onClose={async () => { setOpenRecipe(false); await load(); }} />
+            </div>
+          </div>
+        </div>
+      )}
+      <CreateRecipeModal open={showCreateRecipe} initialName={createRecipeInitialName} onCancel={() => setShowCreateRecipe(false)} onCreate={handleCreateRecipe} />
+      <ConfirmModal open={showConfirmDiscard} title="Discard changes?" message="You have unsaved recipe changes. Discard them and close?" onConfirm={confirmDiscardAndClose} onCancel={() => setShowConfirmDiscard(false)} />
     </div>
   );
 }

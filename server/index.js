@@ -10,6 +10,7 @@ const ingredientRoutes = require("./routes/ingredients");
 const menuRoutes = require("./routes/menu");
 const customerRoutes = require("./routes/customers");
 const profileRoutes = require("./routes/profile");
+const metaRoutes = require("./routes/meta");
 
 const app = express();
 
@@ -35,8 +36,11 @@ app.use("/api/users", userRoutes);
 
 app.use("/api/ingredients", ingredientRoutes);
 app.use("/api/menu", menuRoutes);
+// Alias to match specification: /api/menu-items -> menu routes
+app.use("/api/menu-items", menuRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/profile", profileRoutes);
+app.use("/api/meta", metaRoutes);
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
