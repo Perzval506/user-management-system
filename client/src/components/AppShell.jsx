@@ -1,6 +1,8 @@
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { useState } from "react";
+import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
 import "../styles/shell.css";
+import boydsLogo from "../assets/boyds-logo.png";
+import { ToastProvider, ToastViewport } from "./Toast";
 
 function safeUser() {
   try {
@@ -32,6 +34,17 @@ const Icons = {
       <path d="M12 12.5a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
     </svg>
   ),
+  box: (
+    <svg viewBox="0 0 24 24" fill="none">
+      <path d="M4 8l8-4 8 4-8 4-8-4Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
+      <path d="M4 8v8l8 4 8-4V8" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
+    </svg>
+  ),
+  menu: (
+    <svg viewBox="0 0 24 24" fill="none">
+      <path d="M6 7h12M6 12h12M6 17h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+    </svg>
+  ),
   audit: (
     <svg viewBox="0 0 24 24" fill="none">
       <path d="M7 3h10v4H7V3Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
@@ -50,23 +63,29 @@ const Icons = {
 
 export default function AppShell() {
   const navigate = useNavigate();
+  const location = useLocation();
   const user = safeUser();
   const role = user?.role || "UNKNOWN";
-  const name = user?.name || user?.fullName || user?.email || "User";
+  const name = user?.full_name || user?.name || user?.fullName || user?.username || "User";
 
   const [openItems, setOpenItems] = useState(false);
-  const [openMenu, setOpenMenu] = useState(false);
+  const [openMenuDrop, setOpenMenuDrop] = useState(false);
+  const itemsRef = useRef(null);
+  const menuRef = useRef(null);
 
-  const nav =
-    role === "OWNER"
-      ? [
-          { to: "/admin", label: "Dashboard", icon: Icons.dashboard },
-          { to: "/admin", label: "My Staff", icon: Icons.users },
-          // Items & Menu dropdowns inserted below instead of list entries
-          { to: "/audit", label: "Audit Logs", icon: Icons.audit },
-          { to: "/settings", label: "Settings", icon: Icons.settings },
-        ]
-      : [{ to: "/staff", label: "My Profile", icon: Icons.users }];
+  useEffect(() => {
+    setOpenItems(false);
+    setOpenMenuDrop(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    function onDoc(e) {
+      if (itemsRef.current && !itemsRef.current.contains(e.target)) setOpenItems(false);
+      if (menuRef.current && !menuRef.current.contains(e.target)) setOpenMenuDrop(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
 
   const onLogout = () => {
     localStorage.removeItem("token");
@@ -74,124 +93,132 @@ export default function AppShell() {
     navigate("/login");
   };
 
+  const isActiveGroup = (prefix) => location.pathname.startsWith(prefix);
+
   return (
-    <div className="shell">
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brandMark">B</div>
-          <div>
-            <div className="brandTitle">Boyd’s</div>
-            <div className="brandSub">Pizza House</div>
-          </div>
-        </div>
+    <ToastProvider>
+      <ToastViewport />
 
-        <nav className="nav">
-          {/* Owner-specific ordered nav: Dashboard, My Staff, Items, Menu, then others */}
-          {role === "OWNER" && (
-            <>
-              <NavLink to="/admin" className={({ isActive }) => `navLink ${isActive ? "active" : ""}`} onClick={() => { setOpenItems(false); setOpenMenu(false); }}>
-                <span className="ico">{Icons.dashboard}</span>
-                <span>Dashboard</span>
-              </NavLink>
-
-              <NavLink to="/admin" className={({ isActive }) => `navLink ${isActive ? "active" : ""}`} onClick={() => { setOpenItems(false); setOpenMenu(false); }}>
-                <span className="ico">{Icons.users}</span>
-                <span>My Staff</span>
-              </NavLink>
-
-              <div style={{ position: "relative" }}>
-                <button
-                  type="button"
-                  className="navLink"
-                  onClick={() => { setOpenItems((s) => !s); setOpenMenu(false); }}
-                  style={{ display: "flex", alignItems: "center", gap: 8 }}
-                >
-                  <span className="ico">{Icons.users}</span>
-                  <span>Items ▾</span>
-                </button>
-
-                {openItems && (
-                  <div style={{ position: "absolute", left: 0, top: "100%", marginTop: 6, minWidth: 200, zIndex: 40 }}>
-                    <div style={{ background: "white", borderRadius: 8, boxShadow: "0 6px 18px rgba(0,0,0,0.12)", overflow: "hidden" }}>
-                      <div className="navLink" onClick={() => { navigate('/admin/items/add'); setOpenItems(false); }} style={{ cursor: 'pointer', padding: '10px 12px' }}>Add Ingredient</div>
-                      <div className="navLink" onClick={() => { navigate('/admin/items/manage'); setOpenItems(false); }} style={{ cursor: 'pointer', padding: '10px 12px' }}>Manage Ingredients</div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div style={{ position: "relative" }}>
-                <button
-                  type="button"
-                  className="navLink"
-                  onClick={() => { setOpenMenu((s) => !s); setOpenItems(false); }}
-                  style={{ display: "flex", alignItems: "center", gap: 8 }}
-                >
-                  <span className="ico">{Icons.dashboard}</span>
-                  <span>Menu ▾</span>
-                </button>
-
-                {openMenu && (
-                  <div style={{ position: "absolute", left: 0, top: "100%", marginTop: 6, minWidth: 220, zIndex: 40 }}>
-                    <div style={{ background: "white", borderRadius: 8, boxShadow: "0 6px 18px rgba(0,0,0,0.12)", overflow: "hidden" }}>
-                      <div className="navLink" onClick={() => { navigate('/admin/menu/add'); setOpenMenu(false); }} style={{ cursor: 'pointer', padding: '10px 12px' }}>Add Menu Item</div>
-                      <div className="navLink" onClick={() => { navigate('/admin/menu/manage'); setOpenMenu(false); }} style={{ cursor: 'pointer', padding: '10px 12px' }}>Manage Menu Items</div>
-                      <div className="navLink" onClick={() => { navigate('/admin/menu/recipes'); setOpenMenu(false); }} style={{ cursor: 'pointer', padding: '10px 12px' }}>Recipe</div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* render remaining owner nav entries (audit, settings) */}
-              {nav.slice(2).map((i) => (
-                <NavLink key={i.label} to={i.to} className={({ isActive }) => `navLink ${isActive ? "active" : ""}`} onClick={() => { setOpenItems(false); setOpenMenu(false); }}>
-                  <span className="ico">{i.icon}</span>
-                  <span>{i.label}</span>
-                </NavLink>
-              ))}
-            </>
-          )}
-
-          {role !== "OWNER" && nav.map((i) => (
-            <NavLink
-              key={i.label}
-              to={i.to}
-              className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}
-            >
-              <span className="ico">{i.icon}</span>
-              <span>{i.label}</span>
-            </NavLink>
-          ))}
-        </nav>
-
-        <button className="logoutBtn" onClick={onLogout}>
-          <span className="logoutDot" />
-          Log Out
-        </button>
-      </aside>
-
-      <div className="main">
-        <header className="topbar">
-          <div className="search">
-            <span className="searchIcon">⌕</span>
-            <input placeholder="Search" />
-          </div>
-
-          <div className="profile">
-            <div className="avatar">{initials(name)}</div>
-            <div>
-              <div className="profileName">{name}</div>
-              <div className="profileRole">{role}</div>
+      <div className="shell">
+        <aside className="sidebar">
+          <div className="brand" onClick={() => navigate("/")}>
+            <div className="brandLogoWrap">
+              <img src={boydsLogo} alt="Boyd’s Logo" className="brandLogo" />
+            </div>
+            <div className="brandText">
+              <div className="brandTitle">Boyd’s Pizza House</div>
+              <div className="brandSub">User Management System</div>
             </div>
           </div>
-        </header>
 
-        <main className="content">
-          <div className="surface">
-            <Outlet />
-          </div>
-        </main>
+          <nav className="nav">
+            {role === "OWNER" && (
+              <>
+                {/* ✅ FIX: end makes /admin active ONLY on exact /admin */}
+                <NavLink
+                  to="/admin"
+                  end
+                  className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}
+                >
+                  <span className="ico">{Icons.dashboard}</span>
+                  <span>Dashboard</span>
+                </NavLink>
+
+                <NavLink to="/staff" className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}>
+                  <span className="ico">{Icons.users}</span>
+                  <span>My Staff</span>
+                </NavLink>
+
+                <div ref={itemsRef} className="navGroup">
+                  <button
+                    type="button"
+                    className={`navLink navBtn ${isActiveGroup("/admin/items") || isActiveGroup("/admin/ingredients") ? "active" : ""}`}
+                    onClick={() => { setOpenItems(v => !v); setOpenMenuDrop(false); }}
+                  >
+                    <span className="ico">{Icons.box}</span>
+                    <span className="navGrow">Items</span>
+                    <span className={`chev ${openItems ? "up" : ""}`}>▾</span>
+                  </button>
+
+                  {openItems && (
+                    <div className="dropdown">
+                      <button className="dropdownItem" onClick={() => navigate("/admin/items/add")}>Add Ingredient</button>
+                      <button className="dropdownItem" onClick={() => navigate("/admin/items/manage")}>Manage Ingredients</button>
+                    </div>
+                  )}
+                </div>
+
+                <div ref={menuRef} className="navGroup">
+                  <button
+                    type="button"
+                    className={`navLink navBtn ${isActiveGroup("/admin/menu") ? "active" : ""}`}
+                    onClick={() => { setOpenMenuDrop(v => !v); setOpenItems(false); }}
+                  >
+                    <span className="ico">{Icons.menu}</span>
+                    <span className="navGrow">Menu</span>
+                    <span className={`chev ${openMenuDrop ? "up" : ""}`}>▾</span>
+                  </button>
+
+                  {openMenuDrop && (
+                    <div className="dropdown">
+                      <button className="dropdownItem" onClick={() => navigate("/admin/menu/add")}>Add Menu Item</button>
+                      <button className="dropdownItem" onClick={() => navigate("/admin/menu/manage")}>Manage Menu Items</button>
+                      <button className="dropdownItem" onClick={() => navigate("/admin/menu/recipes")}>Recipe</button>
+                    </div>
+                  )}
+                </div>
+
+                <NavLink to="/audit" className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}>
+                  <span className="ico">{Icons.audit}</span>
+                  <span>Audit Logs</span>
+                </NavLink>
+
+                <NavLink to="/settings" className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}>
+                  <span className="ico">{Icons.settings}</span>
+                  <span>Settings</span>
+                </NavLink>
+              </>
+            )}
+
+            {role !== "OWNER" && (
+              <NavLink to="/staff" className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}>
+                <span className="ico">{Icons.users}</span>
+                <span>My Profile</span>
+              </NavLink>
+            )}
+          </nav>
+
+          <button className="logoutBtn" onClick={onLogout}>
+            <span className="logoutDot" />
+            Log Out
+          </button>
+        </aside>
+
+        <div className="main">
+          <header className="topbar">
+            <div className="search">
+              <span className="searchIcon">⌕</span>
+              <input placeholder="Search" />
+            </div>
+
+            <div className="topbarSpacer" />
+
+            <div className="profile">
+              <div className="avatar">{initials(name)}</div>
+              <div>
+                <div className="profileName">{name}</div>
+                <div className="profileRole">{role}</div>
+              </div>
+            </div>
+          </header>
+
+          <main className="content">
+            <div className="surface">
+              <Outlet />
+            </div>
+          </main>
+        </div>
       </div>
-    </div>
+    </ToastProvider>
   );
 }

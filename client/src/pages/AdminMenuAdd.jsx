@@ -1,17 +1,22 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../services/api";
+import { useToast } from "../components/Toast";
 
 export default function AdminMenuAdd() {
   const nav = useNavigate();
+  const toast = useToast();
+
   const [form, setForm] = useState({ menu_name: "", description: "", status: "ACTIVE" });
-  const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
 
   async function onSubmit(e) {
     e.preventDefault();
-    setErr("");
-    if (!form.menu_name.trim()) return setErr("Menu name is required");
+
+    if (!form.menu_name.trim()) {
+      toast.push({ type: "error", title: "Missing field", message: "Menu name is required." });
+      return;
+    }
 
     try {
       setSaving(true);
@@ -20,43 +25,74 @@ export default function AdminMenuAdd() {
         description: form.description.trim() || null,
         status: form.status || "ACTIVE",
       });
+
+      toast.push({ type: "success", title: "Saved", message: "Menu item created." });
       nav("/admin/menu/manage");
     } catch (e) {
-      setErr(e?.response?.data?.message || e?.message || "Create failed");
+      toast.push({
+        type: "error",
+        title: "Create failed",
+        message: e?.response?.data?.message || e?.message || "Create failed",
+      });
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <div style={{ maxWidth: 720, margin: "30px auto", padding: 16 }}>
-      <h2>Add Menu Item</h2>
-      {err && <div style={{ color: "var(--danger)", marginBottom: 8 }}>{err}</div>}
-
-      <form onSubmit={onSubmit} style={{ display: "grid", gap: 10 }}>
+    <div className="page">
+      <div className="pageHeader">
         <div>
-          <label>Menu name</label>
-          <input value={form.menu_name} onChange={(e) => setForm({ ...form, menu_name: e.target.value })} className="input" />
+          <h2 className="pageTitle">Add Menu Item</h2>
+          <div className="pageSub">Create a new menu item for Boyd’s Pizza House.</div>
         </div>
+      </div>
 
-        <div>
-          <label>Description (optional)</label>
-          <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="input" />
-        </div>
+      <div className="card">
+        <form onSubmit={onSubmit} className="formGrid">
+          <div>
+            <label>Menu name</label>
+            <input
+              className="input"
+              value={form.menu_name}
+              onChange={(e) => setForm({ ...form, menu_name: e.target.value })}
+              placeholder="e.g., Pepperoni Pizza"
+            />
+          </div>
 
-        <div>
-          <label>Status</label>
-          <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} className="input">
-            <option value="ACTIVE">ACTIVE</option>
-            <option value="INACTIVE">INACTIVE</option>
-          </select>
-        </div>
+          <div>
+            <label>Description (optional)</label>
+            <textarea
+              className="input"
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              style={{ minHeight: 90, resize: "vertical" }}
+              placeholder="Short description..."
+            />
+          </div>
 
-        <div style={{ display: "flex", gap: 8 }}>
-          <button className="btn btn-primary" type="submit" disabled={saving}>{saving ? "Saving..." : "Create"}</button>
-          <button type="button" className="btn btn-ghost" onClick={() => nav('/admin')}>Cancel</button>
-        </div>
-      </form>
+          <div>
+            <label>Status</label>
+            <select
+              className="input"
+              value={form.status}
+              onChange={(e) => setForm({ ...form, status: e.target.value })}
+            >
+              <option value="ACTIVE">ACTIVE</option>
+              <option value="INACTIVE">INACTIVE</option>
+            </select>
+          </div>
+
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button className="btn btn-primary" type="submit" disabled={saving}>
+              {saving ? "Saving..." : "Create"}
+            </button>
+            <button className="btn btn-ghost" type="button" onClick={() => nav("/admin/menu/manage")}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
