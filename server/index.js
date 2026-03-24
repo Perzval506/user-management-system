@@ -11,6 +11,9 @@ const menuRoutes = require("./routes/menu");
 const customerRoutes = require("./routes/customers");
 const profileRoutes = require("./routes/profile");
 const metaRoutes = require("./routes/meta");
+const purchaseRoutes = require("./routes/purchases");
+const purchaseOrderRoutes = require("./routes/purchaseOrders");
+const inventoryRoutes = require("./routes/inventory");
 
 const app = express();
 
@@ -41,6 +44,9 @@ app.use("/api/menu-items", menuRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/meta", metaRoutes);
+app.use("/api/purchases", purchaseRoutes);
+app.use("/api/purchase-orders", purchaseOrderRoutes);
+app.use("/api/inventory", inventoryRoutes);
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

@@ -3,12 +3,14 @@ import api from "../services/api";
 import { useNavigate } from "react-router-dom";
 import useUnits from "../hooks/useUnits";
 import { useToast } from "../components/Toast";
+import ToDoNext from "../components/ToDoNext";
 
 const emptyForm = {
   ingredient_name: "",
   category: "",
   base_unit: "",
   base_unit_qty: "",
+  quantity: "",
   status: "ACTIVE",
 };
 
@@ -63,6 +65,7 @@ export default function AdminIngredients() {
       category: row.category ?? "",
       base_unit: row.base_unit ?? "",
       base_unit_qty: row.base_unit_qty ?? "",
+      quantity: row.quantity ?? "",
       status: row.status ?? "ACTIVE",
     });
     setOpen(true);
@@ -94,6 +97,9 @@ export default function AdminIngredients() {
     if (!units.length) return toast.push({ type: "error", title: "Units not loaded", message: "Try refreshing the page." });
     if (!units.includes(bu)) return toast.push({ type: "error", title: "Invalid unit", message: `Allowed: ${units.join(", ")}` });
 
+    const qtyOnHand = form.quantity === "" ? 0 : Number(String(form.quantity).trim());
+    if (!isFinite(qtyOnHand) || qtyOnHand < 0) return toast.push({ type: "error", title: "Invalid stock", message: "Quantity must be 0 or more." });
+
     try {
       if (mode === "create") {
         await api.post("/ingredients", {
@@ -101,6 +107,7 @@ export default function AdminIngredients() {
           category: form.category.trim() || null,
           base_unit: bu,
           base_unit_qty: qty,
+          quantity: qtyOnHand,
           status: form.status || "ACTIVE",
         });
         toast.push({ type: "success", title: "Saved", message: "Ingredient created." });
@@ -110,6 +117,7 @@ export default function AdminIngredients() {
           category: form.category.trim() || null,
           base_unit: bu,
           base_unit_qty: qty,
+          quantity: qtyOnHand,
           status: form.status || "ACTIVE",
         });
         toast.push({ type: "success", title: "Saved", message: "Ingredient updated." });
@@ -163,6 +171,8 @@ export default function AdminIngredients() {
         </div>
       </div>
 
+      <ToDoNext items={items} loading={loading} />
+
       <div style={{ marginBottom: 12 }}>
         <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
           <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
@@ -183,6 +193,8 @@ export default function AdminIngredients() {
                   <th>Name</th>
                   <th>Category</th>
                   <th>Base unit size</th>
+                  <th>Quantity</th>
+                  <th>Last updated</th>
                   <th>Status</th>
                   <th>Actions</th>
                 </tr>
@@ -194,6 +206,8 @@ export default function AdminIngredients() {
                     <td style={{ fontWeight: 800 }}>{row.ingredient_name}</td>
                     <td>{row.category || "-"}</td>
                     <td>{row.base_unit_qty ? `${row.base_unit_qty} ${row.base_unit}` : (row.base_unit || "-")}</td>
+                    <td>{row.quantity ?? 0}</td>
+                    <td>{row.lastUpdated ? new Date(row.lastUpdated).toLocaleString() : "-"}</td>
                     <td>
                       <span className={`badge ${row.status === "ACTIVE" ? "badge-active" : "badge-inactive"}`}>
                         {row.status}
@@ -214,7 +228,7 @@ export default function AdminIngredients() {
 
                 {visibleItems.length === 0 && (
                   <tr>
-                    <td colSpan="5" style={{ opacity: 0.8, padding: 14 }}>No ingredients found.</td>
+                    <td colSpan="7" style={{ opacity: 0.8, padding: 14 }}>No ingredients found.</td>
                   </tr>
                 )}
               </tbody>
@@ -252,6 +266,11 @@ export default function AdminIngredients() {
                     {units.map((u) => (<option key={u} value={u}>{u}</option>))}
                   </select>
                 </div>
+              </div>
+
+              <div>
+                <label>On-hand quantity</label>
+                <input name="quantity" value={form.quantity} onChange={onChange} className="input" type="number" step="0.001" min="0" placeholder="e.g., 5.000" />
               </div>
 
               <div>

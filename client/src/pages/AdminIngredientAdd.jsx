@@ -7,7 +7,7 @@ import { useToast } from "../components/Toast";
 export default function AdminIngredientAdd() {
   const nav = useNavigate();
   const toast = useToast();
-  const [form, setForm] = useState({ ingredient_name: "", category: "", base_unit: "", base_unit_qty: "", status: "ACTIVE" });
+  const [form, setForm] = useState({ ingredient_name: "", category: "", base_unit: "", base_unit_qty: "", quantity: "", status: "ACTIVE" });
   const [saving, setSaving] = useState(false);
   const units = useUnits();
 
@@ -26,15 +26,19 @@ export default function AdminIngredientAdd() {
     if (!units.length) return toast.push({ type: "error", title: "Units not loaded", message: "Try refreshing the page." });
     if (!units.includes(bu)) return toast.push({ type: "error", title: "Invalid unit", message: `Allowed: ${units.join(", ")}` });
 
+    const qtyOnHand = form.quantity === "" ? 0 : Number(String(form.quantity).trim());
+    if (!isFinite(qtyOnHand) || qtyOnHand < 0) return toast.push({ type: "error", title: "Invalid stock", message: "Quantity must be 0 or more." });
+
     try {
       setSaving(true);
-      await api.post("/ingredients", {
-        ingredient_name: form.ingredient_name.trim(),
-        category: form.category.trim() || null,
-        base_unit: bu,
-        base_unit_qty: qty,
-        status: form.status || "ACTIVE",
-      });
+        await api.post("/ingredients", {
+          ingredient_name: form.ingredient_name.trim(),
+          category: form.category.trim() || null,
+          base_unit: bu,
+          base_unit_qty: qty,
+          quantity: qtyOnHand,
+          status: form.status || "ACTIVE",
+        });
       toast.push({ type: "success", title: "Saved", message: "Ingredient created successfully." });
       nav("/admin/items/manage");
     } catch (e) {
@@ -74,6 +78,11 @@ export default function AdminIngredientAdd() {
                 {units.map((u) => (<option key={u} value={u}>{u}</option>))}
               </select>
             </div>
+          </div>
+
+          <div>
+            <label>On-hand quantity</label>
+            <input name="quantity" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} className="input" type="number" step="0.001" min="0" placeholder="e.g., 3.000" />
           </div>
 
           <div>

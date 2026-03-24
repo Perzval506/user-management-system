@@ -10,6 +10,10 @@ import AdminMenu from "./pages/AdminMenu.jsx";
 import AdminIngredientAdd from "./pages/AdminIngredientAdd.jsx";
 import AdminMenuAdd from "./pages/AdminMenuAdd.jsx";
 import AdminRecipes from "./pages/AdminRecipes.jsx";
+import Purchases from "./pages/Purchases.jsx";
+import PurchaseOrders from "./pages/PurchaseOrders.jsx";
+import InventorySummary from "./pages/InventorySummary.jsx";
+import Sales from "./pages/Sales.jsx";
 
 import StaffManagement from "./pages/StaffManagement.jsx";
 import Staff from "./pages/Staff.jsx";
@@ -41,6 +45,10 @@ export default function App() {
           <Route path="/admin/items/add" element={<AdminIngredientAdd />} />
           <Route path="/admin/items/manage" element={<AdminIngredients />} />
           <Route path="/admin/ingredients" element={<AdminIngredients />} />
+          <Route path="/admin/purchases" element={<Purchases />} />
+          <Route path="/admin/purchase-orders" element={<PurchaseOrders />} />
+          <Route path="/admin/inventory/summary" element={<InventorySummary />} />
+          <Route path="/admin/sales" element={<Sales />} />
 
           {/* Menu */}
           <Route path="/admin/menu/add" element={<AdminMenuAdd />} />

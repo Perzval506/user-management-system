@@ -70,18 +70,34 @@ export default function AppShell() {
 
   const [openItems, setOpenItems] = useState(false);
   const [openMenuDrop, setOpenMenuDrop] = useState(false);
+  const [openPurchasingDrop, setOpenPurchasingDrop] = useState(false);
+  const [openInventoryDrop, setOpenInventoryDrop] = useState(false);
   const itemsRef = useRef(null);
   const menuRef = useRef(null);
+  const purchasingRef = useRef(null);
+  const inventoryRef = useRef(null);
 
   useEffect(() => {
     setOpenItems(false);
     setOpenMenuDrop(false);
+    setOpenPurchasingDrop(false);
+    setOpenInventoryDrop(false);
   }, [location.pathname]);
 
   useEffect(() => {
     function onDoc(e) {
-      if (itemsRef.current && !itemsRef.current.contains(e.target)) setOpenItems(false);
-      if (menuRef.current && !menuRef.current.contains(e.target)) setOpenMenuDrop(false);
+      const insideItems = itemsRef.current && itemsRef.current.contains(e.target);
+      const insideMenu = menuRef.current && menuRef.current.contains(e.target);
+      const insidePurchasing = purchasingRef.current && purchasingRef.current.contains(e.target);
+      const insideInventory = inventoryRef.current && inventoryRef.current.contains(e.target);
+
+      // Only close when click is outside all dropdown regions
+      if (!insideItems && !insideMenu && !insidePurchasing && !insideInventory) {
+        setOpenItems(false);
+        setOpenMenuDrop(false);
+        setOpenPurchasingDrop(false);
+        setOpenInventoryDrop(false);
+      }
     }
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
@@ -133,7 +149,7 @@ export default function AppShell() {
                   <button
                     type="button"
                     className={`navLink navBtn ${isActiveGroup("/admin/items") || isActiveGroup("/admin/ingredients") ? "active" : ""}`}
-                    onClick={() => { setOpenItems(v => !v); setOpenMenuDrop(false); }}
+                    onClick={() => { setOpenItems(v => !v); }}
                   >
                     <span className="ico">{Icons.box}</span>
                     <span className="navGrow">Items</span>
@@ -148,11 +164,48 @@ export default function AppShell() {
                   )}
                 </div>
 
+                <div ref={purchasingRef} className="navGroup">
+                  <button
+                    type="button"
+                    className={`navLink navBtn ${isActiveGroup("/admin/purchases") || isActiveGroup("/admin/purchase-orders") ? "active" : ""}`}
+                    onClick={() => { setOpenPurchasingDrop(v => !v); }}
+                  >
+                    <span className="ico">{Icons.box}</span>
+                    <span className="navGrow">Purchasing</span>
+                    <span className={`chev ${openPurchasingDrop ? "up" : ""}`}>▾</span>
+                  </button>
+
+                  {openPurchasingDrop && (
+                    <div className="dropdown">
+                      <button className="dropdownItem" onClick={() => navigate("/admin/purchases")}>Quick Purchases</button>
+                      <button className="dropdownItem" onClick={() => navigate("/admin/purchase-orders")}>Purchase Orders</button>
+                    </div>
+                  )}
+                </div>
+
+                <div ref={inventoryRef} className="navGroup">
+                  <button
+                    type="button"
+                    className={`navLink navBtn ${isActiveGroup("/admin/inventory") ? "active" : ""}`}
+                    onClick={() => { setOpenInventoryDrop(v => !v); }}
+                  >
+                    <span className="ico">{Icons.box}</span>
+                    <span className="navGrow">Inventory</span>
+                    <span className={`chev ${openInventoryDrop ? "up" : ""}`}>▾</span>
+                  </button>
+
+                  {openInventoryDrop && (
+                    <div className="dropdown">
+                      <button className="dropdownItem" onClick={() => navigate("/admin/inventory/summary")}>Inventory Summary</button>
+                    </div>
+                  )}
+                </div>
+
                 <div ref={menuRef} className="navGroup">
                   <button
                     type="button"
                     className={`navLink navBtn ${isActiveGroup("/admin/menu") ? "active" : ""}`}
-                    onClick={() => { setOpenMenuDrop(v => !v); setOpenItems(false); }}
+                    onClick={() => { setOpenMenuDrop(v => !v); }}
                   >
                     <span className="ico">{Icons.menu}</span>
                     <span className="navGrow">Menu</span>
@@ -171,6 +224,11 @@ export default function AppShell() {
                 <NavLink to="/audit" className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}>
                   <span className="ico">{Icons.audit}</span>
                   <span>Audit Logs</span>
+                </NavLink>
+
+                <NavLink to="/admin/sales" className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}>
+                  <span className="ico">{Icons.menu}</span>
+                  <span>Sales</span>
                 </NavLink>
 
                 <NavLink to="/settings" className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}>

@@ -53,9 +53,11 @@ CREATE TABLE IF NOT EXISTS ingredients (
   category VARCHAR(80) NULL,
   base_unit VARCHAR(20) NOT NULL,            -- e.g., kg, g, L, mL, pc
   base_unit_qty DECIMAL(12,3) NULL,
+  quantity DECIMAL(12,3) NOT NULL DEFAULT 0,
   status ENUM('ACTIVE','INACTIVE') NOT NULL DEFAULT 'ACTIVE',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  last_updated TIMESTAMP NULL,
   UNIQUE KEY uq_ingredients_name (ingredient_name)
 ) ENGINE=InnoDB;
 
@@ -137,6 +139,67 @@ CREATE TABLE IF NOT EXISTS invoice_items (
     ON DELETE CASCADE,
   INDEX idx_invoice_item (invoice_id, ingredient_id)
 ) ENGINE=InnoDB;
+
+-- Quick purchases ledger (palengke-style)
+CREATE TABLE IF NOT EXISTS purchases (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  ingredient_name VARCHAR(140) NOT NULL,
+  quantity DECIMAL(12,3) NOT NULL,
+  price DECIMAL(12,2) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_purchases_created (created_at)
+) ENGINE=InnoDB;
+
+-- Simplified purchase order module (commented out; enable if/when needed)
+-- CREATE TABLE IF NOT EXISTS purchase_orders (
+--   id INT AUTO_INCREMENT PRIMARY KEY,
+--   store_name VARCHAR(150) NOT NULL,
+--   purchase_date DATE NOT NULL,
+--   total_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+--   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+--   INDEX idx_po_date (purchase_date)
+-- ) ENGINE=InnoDB;
+--
+-- CREATE TABLE IF NOT EXISTS purchase_order_details (
+--   id INT AUTO_INCREMENT PRIMARY KEY,
+--   purchase_order_id INT NOT NULL,
+--   ingredient_id INT NULL,
+--   ingredient_name VARCHAR(140) NULL,
+--   brand VARCHAR(120) NULL,
+--   unit VARCHAR(40) NULL,
+--   quantity DECIMAL(12,3) NOT NULL DEFAULT 0.000,
+--   price DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+--   subtotal DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+--   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+--   CONSTRAINT fk_pod_order FOREIGN KEY (purchase_order_id) REFERENCES purchase_orders(id) ON DELETE CASCADE,
+--   INDEX idx_pod_order (purchase_order_id),
+--   INDEX idx_pod_ing (ingredient_id)
+-- ) ENGINE=InnoDB;
+
+
+-- ============================================
+-- Legacy migrations (run once on existing DBs)
+-- ============================================
+-- If your legacy ingredients table is missing these columns, run the ALTERs below manually.
+-- ALTER TABLE ingredients ADD COLUMN base_unit_qty DECIMAL(12,3) NULL;
+-- ALTER TABLE ingredients ADD COLUMN quantity DECIMAL(12,3) NOT NULL DEFAULT 0;
+-- ALTER TABLE ingredients ADD COLUMN last_updated TIMESTAMP NULL;
+
+-- If menu_items have NULL recipe_version_id, run the data fix below once to create and link recipes:
+-- INSERT INTO recipes (recipe_name, description, status)
+-- SELECT menu_name, description, 'ACTIVE' FROM menu_items WHERE recipe_version_id IS NULL;
+--
+-- INSERT INTO recipe_versions (recipe_id, version_no, is_active)
+-- SELECT r.id, 1, 1
+-- FROM recipes r
+-- LEFT JOIN recipe_versions v ON v.recipe_id = r.id
+-- WHERE v.id IS NULL;
+--
+-- UPDATE menu_items mi
+-- JOIN recipes r ON r.recipe_name = mi.menu_name
+-- JOIN recipe_versions v ON v.recipe_id = r.id AND v.version_no = 1
+-- SET mi.recipe_version_id = v.id
+-- WHERE mi.recipe_version_id IS NULL;
 
 
 -- Minimal recipe tables (needed because menu pricing assumes recipes/costs exist)

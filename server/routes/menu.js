@@ -157,10 +157,21 @@ router.put("/:id/recipe", requireAuth, async (req, res) => {
       await conn.rollback();
       return res.status(404).json({ error: 'Menu item not found' });
     }
-    const recipeVersionId = menu.recipe_version_id;
+    let recipeVersionId = menu.recipe_version_id;
     if (!recipeVersionId) {
-      await conn.rollback();
-      return res.status(400).json({ error: 'Menu item has no linked recipe version' });
+      // Auto-create minimal recipe + version so users can save lines on legacy menu rows
+      const recipeName = menu.menu_name || `Recipe for menu ${id}`;
+      const [rRecipe] = await conn.query(
+        'INSERT INTO recipes (recipe_name, description, created_by, status) VALUES (?,?,?,?)',
+        [recipeName, null, req.user?.id || null, 'ACTIVE']
+      );
+      const recipeId = rRecipe.insertId;
+      const [rVer] = await conn.query(
+        'INSERT INTO recipe_versions (recipe_id, version_no, is_active, created_by) VALUES (?,?,?,?)',
+        [recipeId, 1, 1, req.user?.id || null]
+      );
+      recipeVersionId = rVer.insertId;
+      await conn.query('UPDATE menu_items SET recipe_version_id=? WHERE id=?', [recipeVersionId, id]);
     }
 
     // Optionally update recipe_versions fields

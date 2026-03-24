@@ -400,6 +400,62 @@
   color: #a12a2a;
 }
 
+.text-right { text-align: right; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+
+/* Multi-select dropdown */
+.multiSelect { position: relative; width: 100%; }
+.multiSelectLabel { font-weight: 700; margin-bottom: 6px; }
+.multiSelectTrigger {
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.multiSelectTrigger.open { box-shadow: 0 12px 40px rgba(0,0,0,0.08); }
+.multiSelectValue { flex: 1; color: var(--text); }
+.multiSelectCaret { color: var(--muted); }
+.multiSelectPopover {
+  position: absolute;
+  left: 0;
+  right: 0;
+  margin-top: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  z-index: 20;
+}
+.multiSelectList {
+  overflow-y: auto;
+}
+.multiSelectOption {
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+.multiSelectOption:last-child { border-bottom: 0; }
+.multiSelectOption:hover { background: var(--surface2); }
+.multiSelectEmpty { padding: 12px; color: var(--muted); }
+.multiSelectFooter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+}
+.multiSelectSpacer { flex: 1; }
+
 .rowActions {
   display: flex;
   gap: 8px;
