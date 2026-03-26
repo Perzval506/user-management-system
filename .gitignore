@@ -27,3 +27,6 @@ pnpm-debug.log*
 
 # Misc
 *.swp
+
+# Runtime uploads
+server/uploads/

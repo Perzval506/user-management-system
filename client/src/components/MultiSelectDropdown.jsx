@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, useEffect } from "react";
 
 export default function MultiSelectDropdown({
   options = [],
@@ -11,76 +11,92 @@ export default function MultiSelectDropdown({
   maxHeight = 260,
 }) {
   const [open, setOpen] = useState(false);
-  const [localSelected, setLocalSelected] = useState(selected || []);
+  const [draftSelected, setDraftSelected] = useState([]);
   const wrapRef = useRef(null);
 
-  useEffect(() => {
-    setLocalSelected(selected || []);
-  }, [selected]);
+  // New UX: keep edits local while the popover is open so clicking outside does not desync the visible chips.
+  const currentSelected = open ? draftSelected : selected;
 
-  // Close only when clicking outside the component
   useEffect(() => {
     function handleClick(event) {
-      if (wrapRef.current && !wrapRef.current.contains(event.target)) {
+      if (wrapRef.current && !wrapRef.current.contains(event.target) && open) {
         setOpen(false);
-        if (onDone) onDone(localSelected);
+        if (onDone) onDone(draftSelected);
       }
     }
+
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
-  }, [localSelected, onDone]);
+  }, [draftSelected, onDone, open]);
 
   const text = useMemo(() => {
-    if (!localSelected.length) return placeholder;
-    const chosen = options.filter((o) => localSelected.includes(o.value)).map((o) => o.label);
+    if (!currentSelected.length) return placeholder;
+    const chosen = options
+      .filter((option) => currentSelected.includes(option.value))
+      .map((option) => option.label);
     return chosen.length ? chosen.join(", ") : placeholder;
-  }, [localSelected, options, placeholder]);
+  }, [currentSelected, options, placeholder]);
+
+  const openDropdown = () => {
+    setDraftSelected(selected || []);
+    setOpen(true);
+  };
 
   const toggle = (value) => {
-    setLocalSelected((prev) =>
-      prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]
+    setDraftSelected((previous) =>
+      previous.includes(value)
+        ? previous.filter((item) => item !== value)
+        : [...previous, value]
     );
   };
 
   const handleDone = () => {
-    if (onChange) onChange(localSelected);
-    if (onDone) onDone(localSelected);
+    if (onChange) onChange(draftSelected);
+    if (onDone) onDone(draftSelected);
     setOpen(false);
   };
 
   const clear = () => {
-    setLocalSelected([]);
-    if (onChange) onChange([]);
+    setDraftSelected([]);
+    if (!open && onChange) onChange([]);
   };
 
   return (
     <div className="multiSelect" ref={wrapRef}>
       {label && <div className="multiSelectLabel">{label}</div>}
-      <button type="button" className={`multiSelectTrigger ${open ? "open" : ""}`} onClick={() => setOpen((v) => !v)}>
+      <button
+        type="button"
+        className={`multiSelectTrigger ${open ? "open" : ""}`}
+        onClick={() => (open ? setOpen(false) : openDropdown())}
+      >
         <span className="multiSelectValue">{text}</span>
-        <span className="multiSelectCaret">▾</span>
+        <span className="multiSelectCaret">v</span>
       </button>
 
       {open && (
         <div className="multiSelectPopover" style={{ maxHeight }}>
           <div className="multiSelectList" style={{ maxHeight }}>
-            {options.map((opt) => (
-              <label key={opt.value} className="multiSelectOption">
+            {options.map((option) => (
+              <label key={option.value} className="multiSelectOption">
                 <input
                   type="checkbox"
-                  checked={localSelected.includes(opt.value)}
-                  onChange={() => toggle(opt.value)}
-                  onClick={(e) => e.stopPropagation()}
+                  checked={draftSelected.includes(option.value)}
+                  onChange={() => toggle(option.value)}
+                  onClick={(event) => event.stopPropagation()}
                 />
-                <span>{opt.label}</span>
+                <span>{option.label}</span>
               </label>
             ))}
             {!options.length && <div className="multiSelectEmpty">No options</div>}
           </div>
           <div className="multiSelectFooter">
-            <button type="button" className="btn btn-ghost" onClick={clear}>Clear</button>
+            <button type="button" className="btn btn-ghost" onClick={clear}>
+              Clear
+            </button>
             <div className="multiSelectSpacer" />
-            <button type="button" className="btn btn-primary" onClick={handleDone}>{doneLabel}</button>
+            <button type="button" className="btn btn-primary" onClick={handleDone}>
+              {doneLabel}
+            </button>
           </div>
         </div>
       )}

@@ -11,7 +11,7 @@ export default function Sales() {
           <h2 className="pageTitle">Sales</h2>
           <div className="pageSub">Summary and list (structure ready for next sprint).</div>
         </div>
-        <button className="btn btn-ghost">Export (coming soon)</button>
+        <div className="badge">Sales export will be added in a later pass</div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>

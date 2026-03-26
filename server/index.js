@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const path = require("path");
 require("dotenv").config();
 
 const authRoutes = require("./routes/auth");
@@ -28,6 +29,7 @@ app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions));
 
 app.use(express.json());
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 
 app.get("/api/health", (req, res) => res.json({ ok: true }));

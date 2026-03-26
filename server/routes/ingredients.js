@@ -2,6 +2,7 @@ const express = require("express");
 const pool = require("../db");
 const router = express.Router();
 const ALLOWED_UNITS = require("../utils/units");
+const { tableExists } = require("../utils/dbIntrospection");
 
 let cachedCols = null;
 async function getIngredientColumns() {
@@ -51,11 +52,75 @@ router.get("/", async (req, res) => {
       params
     );
 
-    const mapped = rows.map((r) => ({
-      ...r,
-      quantity: r.quantity ?? 0,
-      lastUpdated: r.last_updated || r.updated_at || r.created_at,
-    }));
+    const canReadPurchaseOrders =
+      (await tableExists("purchase_orders")) && (await tableExists("purchase_order_details"));
+    const canReadPurchases = await tableExists("purchases");
+
+    const [purchaseOrderCostRows] = canReadPurchaseOrders
+      ? await pool.query(
+          `SELECT ranked.ingredient_id, ranked.price, ranked.unit, ranked.brand, ranked.purchased_at
+             FROM (
+               SELECT pod.ingredient_id, pod.price, pod.unit, pod.brand, po.purchase_date AS purchased_at,
+                      ROW_NUMBER() OVER (PARTITION BY pod.ingredient_id ORDER BY po.purchase_date DESC, pod.id DESC) AS rn
+                 FROM purchase_order_details pod
+                 JOIN purchase_orders po ON po.id = pod.purchase_order_id
+                WHERE pod.ingredient_id IS NOT NULL
+                  AND pod.price IS NOT NULL
+                  AND pod.price >= 0
+           ) ranked
+            WHERE ranked.rn = 1`
+        )
+      : [[]];
+    const [purchaseCostRows] = canReadPurchases
+      ? await pool.query(
+          `SELECT ranked.ingredient_name, ranked.unit_cost, ranked.created_at
+             FROM (
+               SELECT LOWER(TRIM(ingredient_name)) AS ingredient_name,
+                      CASE
+                        WHEN quantity IS NULL OR quantity <= 0 THEN NULL
+                        ELSE ROUND(price / quantity, 4)
+                      END AS unit_cost,
+                      created_at,
+                      ROW_NUMBER() OVER (PARTITION BY LOWER(TRIM(ingredient_name)) ORDER BY created_at DESC, id DESC) AS rn
+                 FROM purchases
+                WHERE ingredient_name IS NOT NULL
+                  AND TRIM(ingredient_name) <> ''
+                  AND price IS NOT NULL
+           ) ranked
+            WHERE ranked.rn = 1`
+        )
+      : [[]];
+
+    const purchaseOrderCostByIngredientId = purchaseOrderCostRows.reduce((acc, row) => {
+      acc[row.ingredient_id] = row;
+      return acc;
+    }, {});
+    const purchaseCostByName = purchaseCostRows.reduce((acc, row) => {
+      acc[row.ingredient_name] = row;
+      return acc;
+    }, {});
+
+    const mapped = rows.map((r) => {
+      const purchaseOrderCost = purchaseOrderCostByIngredientId[r.id] || null;
+      const purchaseCost = purchaseCostByName[String(r.ingredient_name || "").trim().toLowerCase()] || null;
+      const suggestedUnitCost =
+        purchaseOrderCost && isFinite(Number(purchaseOrderCost.price))
+          ? Number(purchaseOrderCost.price)
+          : purchaseCost && isFinite(Number(purchaseCost.unit_cost))
+            ? Number(purchaseCost.unit_cost)
+            : null;
+
+      return {
+        ...r,
+        quantity: r.quantity ?? 0,
+        lastUpdated: r.last_updated || r.updated_at || r.created_at,
+        suggested_unit_cost: suggestedUnitCost,
+        suggested_cost_unit: purchaseOrderCost?.unit || r.base_unit || null,
+        suggested_brand: purchaseOrderCost?.brand || null,
+        suggested_cost_source: purchaseOrderCost ? "purchase_order" : purchaseCost ? "purchase" : null,
+        suggested_cost_updated_at: purchaseOrderCost?.purchased_at || purchaseCost?.created_at || null,
+      };
+    });
     res.json(mapped);
   } catch (err) {
     console.error("/ingredients GET failed:", err.message);
@@ -70,7 +135,7 @@ router.post("/", async (req, res) => {
   const qtyToAdd = Number(quantity ?? base_unit_qty ?? 0);
 
   if (!ALLOWED_UNITS.includes(bu)) {
-    return res.status(400).json({ message: "Invalid base_unit. Allowed: kg,g,mg,cup,bottle,teaspoon,tablepoon,gallon,pack" });
+    return res.status(400).json({ message: `Invalid base_unit. Allowed: ${ALLOWED_UNITS.join(",")}` });
   }
   if (!isFinite(packSize) || packSize <= 0) {
     return res.status(400).json({ message: "Invalid base_unit_qty. Must be a number > 0" });
@@ -143,7 +208,7 @@ router.put("/:id", async (req, res) => {
   const qtyVal = Number(quantity);
 
   if (!ALLOWED_UNITS.includes(bu)) {
-    return res.status(400).json({ message: "Invalid base_unit. Allowed: kg,g,mg,cup,bottle,teaspoon,tablepoon,gallon,pack" });
+    return res.status(400).json({ message: `Invalid base_unit. Allowed: ${ALLOWED_UNITS.join(",")}` });
   }
   if (!isFinite(packSize) || packSize <= 0) {
     return res.status(400).json({ message: "Invalid base_unit_qty. Must be a number > 0" });

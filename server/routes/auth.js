@@ -37,6 +37,11 @@ router.post("/login", async (req, res) => {
       { expiresIn: "2h" }
     );
 
+    await pool.execute(
+      "UPDATE users SET last_login_at = NOW() WHERE id = ?",
+      [user.id]
+    );
+
     res.json({
       token,
       user: { id: user.id, username: user.username, role: user.role, full_name: user.full_name },

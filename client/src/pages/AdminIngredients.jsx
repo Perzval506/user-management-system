@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import api from "../services/api";
-import { useNavigate } from "react-router-dom";
 import useUnits from "../hooks/useUnits";
 import { useToast } from "../components/Toast";
 import ToDoNext from "../components/ToDoNext";
+import { formatDateTimeFriendly, formatNumber } from "../utils/formatters";
 
 const emptyForm = {
   ingredient_name: "",
@@ -15,17 +16,15 @@ const emptyForm = {
 };
 
 export default function AdminIngredients() {
-  const nav = useNavigate();
   const toast = useToast();
+  const location = useLocation();
+  const navigate = useNavigate();
 
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-
   const [showInactive, setShowInactive] = useState(false);
-
-  // modal state
   const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState("create"); // create | edit
+  const [mode, setMode] = useState("create");
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
 
@@ -33,22 +32,52 @@ export default function AdminIngredients() {
 
   const visibleItems = useMemo(() => {
     if (showInactive) return items;
-    return items.filter((x) => x.status !== "INACTIVE");
+    return items.filter((item) => item.status !== "INACTIVE");
   }, [items, showInactive]);
+  const activeCount = useMemo(
+    () => items.filter((item) => item.status !== "INACTIVE").length,
+    [items]
+  );
+  const inactiveCount = useMemo(
+    () => items.filter((item) => item.status === "INACTIVE").length,
+    [items]
+  );
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await api.get("/ingredients");
       setItems(res.data || []);
     } catch (e) {
-      toast.push({ type: "error", title: "Load failed", message: e?.response?.data?.message || e.message || "Failed to load ingredients" });
+      toast.push({
+        type: "error",
+        title: "Load failed",
+        message: e?.response?.data?.message || e.message || "Failed to load ingredients",
+      });
     } finally {
       setLoading(false);
     }
-  }
+  }, [toast]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get("create") === "1") {
+      openCreate();
+      params.delete("create");
+      const next = params.toString();
+      navigate(
+        {
+          pathname: location.pathname,
+          search: next ? `?${next}` : "",
+        },
+        { replace: true }
+      );
+    }
+  }, [location.pathname, location.search, navigate]);
 
   function openCreate() {
     setMode("create");
@@ -78,55 +107,68 @@ export default function AdminIngredients() {
     setForm(emptyForm);
   }
 
-  function onChange(e) {
-    setForm((p) => ({ ...p, [e.target.name]: e.target.value }));
+  function onChange(event) {
+    setForm((previous) => ({ ...previous, [event.target.name]: event.target.value }));
   }
 
-  async function onSubmit(e) {
-    e.preventDefault();
+  async function onSubmit(event) {
+    event.preventDefault();
 
-    if (!form.ingredient_name.trim()) return toast.push({ type: "error", title: "Missing field", message: "Ingredient name is required." });
-    if (!form.base_unit_qty && form.base_unit_qty !== 0) return toast.push({ type: "error", title: "Missing field", message: "Base unit quantity is required." });
+    if (!form.ingredient_name.trim()) {
+      return toast.push({ type: "error", title: "Missing field", message: "Ingredient name is required." });
+    }
+    if (!form.base_unit_qty && form.base_unit_qty !== 0) {
+      return toast.push({ type: "error", title: "Missing field", message: "Base unit quantity is required." });
+    }
 
     const qty = Number(String(form.base_unit_qty).trim());
-    if (!isFinite(qty) || qty <= 0) return toast.push({ type: "error", title: "Invalid value", message: "Base unit quantity must be greater than 0." });
+    if (!isFinite(qty) || qty <= 0) {
+      return toast.push({ type: "error", title: "Invalid value", message: "Base unit quantity must be greater than 0." });
+    }
 
-    if (!form.base_unit.trim()) return toast.push({ type: "error", title: "Missing field", message: "Base unit is required." });
+    if (!form.base_unit.trim()) {
+      return toast.push({ type: "error", title: "Missing field", message: "Base unit is required." });
+    }
 
-    const bu = String(form.base_unit).trim().toLowerCase();
-    if (!units.length) return toast.push({ type: "error", title: "Units not loaded", message: "Try refreshing the page." });
-    if (!units.includes(bu)) return toast.push({ type: "error", title: "Invalid unit", message: `Allowed: ${units.join(", ")}` });
+    const baseUnit = String(form.base_unit).trim().toLowerCase();
+    if (!units.length) {
+      return toast.push({ type: "error", title: "Units not loaded", message: "Try refreshing the page." });
+    }
+    if (!units.includes(baseUnit)) {
+      return toast.push({ type: "error", title: "Invalid unit", message: `Allowed: ${units.join(", ")}` });
+    }
 
     const qtyOnHand = form.quantity === "" ? 0 : Number(String(form.quantity).trim());
-    if (!isFinite(qtyOnHand) || qtyOnHand < 0) return toast.push({ type: "error", title: "Invalid stock", message: "Quantity must be 0 or more." });
+    if (!isFinite(qtyOnHand) || qtyOnHand < 0) {
+      return toast.push({ type: "error", title: "Invalid stock", message: "Quantity must be 0 or more." });
+    }
 
     try {
+      const payload = {
+        ingredient_name: form.ingredient_name.trim(),
+        category: form.category.trim() || null,
+        base_unit: baseUnit,
+        base_unit_qty: qty,
+        quantity: qtyOnHand,
+        status: form.status || "ACTIVE",
+      };
+
       if (mode === "create") {
-        await api.post("/ingredients", {
-          ingredient_name: form.ingredient_name.trim(),
-          category: form.category.trim() || null,
-          base_unit: bu,
-          base_unit_qty: qty,
-          quantity: qtyOnHand,
-          status: form.status || "ACTIVE",
-        });
+        await api.post("/ingredients", payload);
         toast.push({ type: "success", title: "Saved", message: "Ingredient created." });
       } else {
-        await api.put(`/ingredients/${editingId}`, {
-          ingredient_name: form.ingredient_name.trim(),
-          category: form.category.trim() || null,
-          base_unit: bu,
-          base_unit_qty: qty,
-          quantity: qtyOnHand,
-          status: form.status || "ACTIVE",
-        });
+        await api.put(`/ingredients/${editingId}`, payload);
         toast.push({ type: "success", title: "Saved", message: "Ingredient updated." });
       }
 
       closeModal();
       await load();
-    } catch (e2) {
-      toast.push({ type: "error", title: "Save failed", message: e2?.response?.data?.message || e2.message || "Save failed" });
+    } catch (error) {
+      toast.push({
+        type: "error",
+        title: "Save failed",
+        message: error?.response?.data?.message || error.message || "Save failed",
+      });
     }
   }
 
@@ -135,8 +177,12 @@ export default function AdminIngredients() {
       await api.delete(`/ingredients/${row.id}`);
       toast.push({ type: "success", title: "Updated", message: "Ingredient set to INACTIVE." });
       await load();
-    } catch (e) {
-      toast.push({ type: "error", title: "Deactivate failed", message: e?.response?.data?.message || e.message || "Deactivate failed" });
+    } catch (error) {
+      toast.push({
+        type: "error",
+        title: "Deactivate failed",
+        message: error?.response?.data?.message || error.message || "Deactivate failed",
+      });
     }
   }
 
@@ -147,12 +193,17 @@ export default function AdminIngredients() {
         category: row.category || null,
         base_unit: row.base_unit,
         base_unit_qty: row.base_unit_qty,
+        quantity: row.quantity ?? 0,
         status: "ACTIVE",
       });
       toast.push({ type: "success", title: "Updated", message: "Ingredient set to ACTIVE." });
       await load();
-    } catch (e) {
-      toast.push({ type: "error", title: "Activate failed", message: e?.response?.data?.message || e.message || "Activate failed" });
+    } catch (error) {
+      toast.push({
+        type: "error",
+        title: "Activate failed",
+        message: error?.response?.data?.message || error.message || "Activate failed",
+      });
     }
   }
 
@@ -161,13 +212,36 @@ export default function AdminIngredients() {
       <div className="pageHeader">
         <div>
           <h2 className="pageTitle">Ingredient Management</h2>
-          <div className="pageSub">Manage ingredients used in menu costing & recipes.</div>
+          <div className="pageSub">Set up ingredients, track on-hand stock, and keep recipe costing clean.</div>
         </div>
 
         <div className="pageActions">
-          <button className="btn btn-ghost" onClick={() => nav("/admin")}>Back</button>
           <button className="btn btn-ghost" onClick={load}>Refresh</button>
           <button className="btn btn-primary" onClick={openCreate}>Create Ingredient</button>
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gap: 12,
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          marginBottom: 14,
+        }}
+      >
+        <div className="card">
+          <div style={{ color: "#6B7280", marginBottom: 4 }}>Active ingredients</div>
+          <div style={{ fontSize: 26, fontWeight: 800 }}>{activeCount}</div>
+        </div>
+        <div className="card">
+          <div style={{ color: "#6B7280", marginBottom: 4 }}>Inactive ingredients</div>
+          <div style={{ fontSize: 26, fontWeight: 800 }}>{inactiveCount}</div>
+        </div>
+        <div className="card">
+          <div style={{ color: "#6B7280", marginBottom: 4 }}>How this works</div>
+          <div style={{ lineHeight: 1.5 }}>
+            Create the ingredient once, define its base unit, then update stock as purchases come in.
+          </div>
         </div>
       </div>
 
@@ -175,7 +249,7 @@ export default function AdminIngredients() {
 
       <div style={{ marginBottom: 12 }}>
         <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
-          <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
+          <input type="checkbox" checked={showInactive} onChange={(event) => setShowInactive(event.target.checked)} />
           Show INACTIVE
         </label>
       </div>
@@ -205,9 +279,9 @@ export default function AdminIngredients() {
                   <tr key={row.id}>
                     <td style={{ fontWeight: 800 }}>{row.ingredient_name}</td>
                     <td>{row.category || "-"}</td>
-                    <td>{row.base_unit_qty ? `${row.base_unit_qty} ${row.base_unit}` : (row.base_unit || "-")}</td>
-                    <td>{row.quantity ?? 0}</td>
-                    <td>{row.lastUpdated ? new Date(row.lastUpdated).toLocaleString() : "-"}</td>
+                    <td>{row.base_unit_qty ? `${formatNumber(row.base_unit_qty)} ${row.base_unit}` : row.base_unit || "-"}</td>
+                    <td className="text-right mono">{formatNumber(row.quantity ?? 0)}</td>
+                    <td>{row.lastUpdated ? formatDateTimeFriendly(row.lastUpdated) : "-"}</td>
                     <td>
                       <span className={`badge ${row.status === "ACTIVE" ? "badge-active" : "badge-inactive"}`}>
                         {row.status}
@@ -215,7 +289,7 @@ export default function AdminIngredients() {
                     </td>
                     <td>
                       <div className="rowActions">
-                        <button className="btn" onClick={() => openEdit(row)}>Edit</button>
+                        <button className="btn" onClick={() => openEdit(row)}>Manage</button>
                         {row.status === "INACTIVE" ? (
                           <button className="btn" onClick={() => activate(row)}>Activate</button>
                         ) : (
@@ -228,7 +302,9 @@ export default function AdminIngredients() {
 
                 {visibleItems.length === 0 && (
                   <tr>
-                    <td colSpan="7" style={{ opacity: 0.8, padding: 14 }}>No ingredients found.</td>
+                    <td colSpan="7" style={{ opacity: 0.8, padding: 14 }}>
+                      No ingredients found. Create your first ingredient to start tracking stock and recipes.
+                    </td>
                   </tr>
                 )}
               </tbody>
@@ -237,13 +313,13 @@ export default function AdminIngredients() {
         )}
       </div>
 
-      {/* Modal */}
+      {/* UX cleanup: ingredient setup now uses clearer management language and field guidance. */}
       {open && (
         <div style={modalBackdrop} onClick={closeModal}>
-          <div style={modalCard} onClick={(e) => e.stopPropagation()}>
+          <div style={modalCard} onClick={(event) => event.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-              <h3 style={{ margin: 0 }}>{mode === "create" ? "Create Ingredient" : "Edit Ingredient"}</h3>
-              <button className="btn btn-ghost" onClick={closeModal}>✕</button>
+              <h3 style={{ margin: 0 }}>{mode === "create" ? "Create Ingredient" : `Manage ${form.ingredient_name || "Ingredient"}`}</h3>
+              <button className="btn btn-ghost" onClick={closeModal}>X</button>
             </div>
 
             <form onSubmit={onSubmit} className="formGrid">
@@ -259,18 +335,26 @@ export default function AdminIngredients() {
 
               <div>
                 <label>Base unit size</label>
+                <div style={{ color: "#6B7280", marginBottom: 6, fontSize: 13 }}>
+                  Example: 1 kg, 1 pack, or 500 g. Recipes will use this as the ingredient&apos;s starting unit.
+                </div>
                 <div className="formRow2">
-                  <input name="base_unit_qty" value={form.base_unit_qty} onChange={onChange} className="input" type="number" step="0.001" min="0.001" placeholder="e.g., 1.000" />
+                <input name="base_unit_qty" value={form.base_unit_qty} onChange={onChange} className="input" type="number" step="0.01" min="0.01" placeholder="e.g., 1.00" />
                   <select name="base_unit" value={form.base_unit} onChange={onChange} className="input">
                     <option value="">-- select unit --</option>
-                    {units.map((u) => (<option key={u} value={u}>{u}</option>))}
+                    {units.map((unit) => (
+                      <option key={unit} value={unit}>{unit}</option>
+                    ))}
                   </select>
                 </div>
               </div>
 
               <div>
                 <label>On-hand quantity</label>
-                <input name="quantity" value={form.quantity} onChange={onChange} className="input" type="number" step="0.001" min="0" placeholder="e.g., 5.000" />
+                <div style={{ color: "#6B7280", marginBottom: 6, fontSize: 13 }}>
+                  Current usable stock in the same base unit you defined above.
+                </div>
+                <input name="quantity" value={form.quantity} onChange={onChange} className="input" type="number" step="0.01" min="0" placeholder="e.g., 5.00" />
               </div>
 
               <div>

@@ -7,9 +7,6 @@ import Login from "./pages/Login.jsx";
 import OwnerDashboard from "./pages/OwnerDashboard.jsx";
 import AdminIngredients from "./pages/AdminIngredients.jsx";
 import AdminMenu from "./pages/AdminMenu.jsx";
-import AdminIngredientAdd from "./pages/AdminIngredientAdd.jsx";
-import AdminMenuAdd from "./pages/AdminMenuAdd.jsx";
-import AdminRecipes from "./pages/AdminRecipes.jsx";
 import Purchases from "./pages/Purchases.jsx";
 import PurchaseOrders from "./pages/PurchaseOrders.jsx";
 import InventorySummary from "./pages/InventorySummary.jsx";
@@ -39,10 +36,10 @@ export default function App() {
           <Route path="/admin" element={<OwnerDashboard />} />
 
           {/* ✅ Owner Staff Management (User List + Create User) */}
-          <Route path="/staff" element={<StaffManagement />} />
+          <Route path="/admin/staff" element={<StaffManagement />} />
 
           {/* Items */}
-          <Route path="/admin/items/add" element={<AdminIngredientAdd />} />
+          <Route path="/admin/items/add" element={<Navigate to="/admin/items/manage?create=1" replace />} />
           <Route path="/admin/items/manage" element={<AdminIngredients />} />
           <Route path="/admin/ingredients" element={<AdminIngredients />} />
           <Route path="/admin/purchases" element={<Purchases />} />
@@ -51,10 +48,11 @@ export default function App() {
           <Route path="/admin/sales" element={<Sales />} />
 
           {/* Menu */}
-          <Route path="/admin/menu/add" element={<AdminMenuAdd />} />
+          {/* New consolidation: legacy menu add and recipe routes now flow into one management screen. */}
+          <Route path="/admin/menu/add" element={<Navigate to="/admin/menu/manage" replace />} />
           <Route path="/admin/menu/manage" element={<AdminMenu />} />
           <Route path="/admin/menu" element={<AdminMenu />} />
-          <Route path="/admin/menu/recipes" element={<AdminRecipes />} />
+          <Route path="/admin/menu/recipes" element={<Navigate to="/admin/menu/manage" replace />} />
 
           <Route path="/audit" element={<AuditLogs />} />
           <Route path="/settings" element={<Settings />} />

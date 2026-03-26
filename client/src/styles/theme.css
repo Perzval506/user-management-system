@@ -1,8 +1,8 @@
 :root{
-  --bg: #F6F7FB;
-  --surface: #FFFFFF;
-  --surface2: #FBFBFE;
-  --border: #E7EAF3;
+  --bg: #eef1f5;
+  --surface: #f7f8fa;
+  --surface2: #eef2f6;
+  --border: #d2d9e3;
 
   --text: #111827;
   --muted: #6B7280;
@@ -14,7 +14,7 @@
   --danger: #FF5B7C;
   --success: #22C55E;
 
-  --shadow: 0 18px 60px rgba(15, 23, 42, 0.06);
+  --shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
   --radius: 16px;
   --radius2: 14px;
 

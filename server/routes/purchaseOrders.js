@@ -1,12 +1,16 @@
 const express = require("express");
 const pool = require("../db");
 const router = express.Router();
+const { getColumns, tableExists } = require("../utils/dbIntrospection");
 
 const round2 = (num) => Number(Number(num || 0).toFixed(2));
 
 // List purchase orders with basic summary
 router.get("/", async (_req, res) => {
   try {
+    if (!(await tableExists("purchase_orders")) || !(await tableExists("purchase_order_details"))) {
+      return res.json([]);
+    }
     const [rows] = await pool.query(
       `SELECT po.id, po.store_name, po.purchase_date, po.total_amount, po.created_at,
               COUNT(pod.id) AS item_count
@@ -26,6 +30,9 @@ router.get("/", async (_req, res) => {
 router.get("/:id", async (req, res) => {
   const { id } = req.params;
   try {
+    if (!(await tableExists("purchase_orders")) || !(await tableExists("purchase_order_details"))) {
+      return res.status(404).json({ message: "Purchase order storage is not set up yet." });
+    }
     const [[order]] = await pool.query("SELECT * FROM purchase_orders WHERE id=?", [id]);
     if (!order) return res.status(404).json({ message: "Not found" });
     const [items] = await pool.query(
@@ -43,8 +50,53 @@ router.get("/:id", async (req, res) => {
 router.post("/", async (req, res) => {
   const { storeName, purchaseDate, items = [] } = req.body;
   const normalizedItems = Array.isArray(items) ? items : [];
+  if (!storeName || !String(storeName).trim()) {
+    return res.status(400).json({ message: "storeName is required" });
+  }
+  if (!normalizedItems.length) {
+    return res.status(400).json({ message: "At least one purchase-order item is required" });
+  }
+
+  const validationErrors = [];
+  const cleanedItems = normalizedItems
+    .map((item, index) => {
+      const ingredientId = item.ingredientId ? Number(item.ingredientId) : null;
+      const ingredientName = String(item.ingredientName || "").trim();
+      const quantity = Number(item.quantity);
+      const price = Number(item.price);
+      const brand = String(item.brand || "").trim();
+      const unit = String(item.unit || "").trim();
+
+      if (!ingredientId && !ingredientName) {
+        validationErrors.push(`Item ${index + 1} is missing an ingredient.`);
+      }
+      if (!isFinite(quantity) || quantity <= 0) {
+        validationErrors.push(`Item ${index + 1} needs a quantity greater than 0.`);
+      }
+      if (!isFinite(price) || price < 0) {
+        validationErrors.push(`Item ${index + 1} needs a unit price of 0 or more.`);
+      }
+      if (!unit) {
+        validationErrors.push(`Item ${index + 1} is missing a unit.`);
+      }
+
+      return {
+        ingredientId,
+        ingredientName: ingredientName || null,
+        brand: brand || null,
+        unit: unit || null,
+        quantity,
+        price,
+      };
+    })
+    .filter((item) => item.ingredientId || item.ingredientName || item.brand || item.unit || item.quantity || item.price);
+
+  if (validationErrors.length) {
+    return res.status(400).json({ message: validationErrors[0], details: validationErrors });
+  }
+
   const computedTotal = round2(
-    normalizedItems.reduce((sum, it) => {
+    cleanedItems.reduce((sum, it) => {
       const qty = Number(it.quantity || 0);
       const price = Number(it.price || 0);
       return sum + qty * price;
@@ -53,6 +105,10 @@ router.post("/", async (req, res) => {
 
   const conn = await pool.getConnection();
   try {
+    if (!(await tableExists("purchase_orders")) || !(await tableExists("purchase_order_details"))) {
+      return res.status(503).json({ message: "Purchase order setup is incomplete. Run the latest database migration first." });
+    }
+
     await conn.beginTransaction();
     const [rOrder] = await conn.query(
       "INSERT INTO purchase_orders (store_name, purchase_date, total_amount, created_at) VALUES (?,?,?,NOW())",
@@ -60,8 +116,8 @@ router.post("/", async (req, res) => {
     );
     const orderId = rOrder.insertId;
 
-    if (normalizedItems.length) {
-      const rows = normalizedItems.map((it) => {
+    if (cleanedItems.length) {
+      const rows = cleanedItems.map((it) => {
         const qty = round2(it.quantity || 0);
         const price = round2(it.price || 0);
         const subtotal = round2(qty * price);
@@ -84,13 +140,25 @@ router.post("/", async (req, res) => {
       );
 
       // Update inventory balances for each detail (best-effort inside txn)
-      for (const it of normalizedItems) {
+      const ingredientCols = await getColumns("ingredients");
+      const hasQuantity = Boolean(ingredientCols.quantity);
+      const hasLastUpdated = Boolean(ingredientCols.last_updated);
+      for (const it of cleanedItems) {
         if (!it.ingredientId) continue;
         const qty = round2(it.quantity || 0);
-        await conn.query(
-          "UPDATE ingredients SET quantity = COALESCE(quantity,0)+?, last_updated = NOW() WHERE id=?",
-          [qty, it.ingredientId]
-        );
+        const updates = [];
+        const values = [];
+        if (hasQuantity) {
+          updates.push("quantity = COALESCE(quantity,0)+?");
+          values.push(qty);
+        }
+        if (hasLastUpdated) {
+          updates.push("last_updated = NOW()");
+        }
+        if (updates.length) {
+          values.push(it.ingredientId);
+          await conn.query(`UPDATE ingredients SET ${updates.join(", ")} WHERE id=?`, values);
+        }
       }
     }
 

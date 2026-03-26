@@ -1,13 +1,14 @@
 import { useMemo } from "react";
+import { formatDateTimeFriendly, formatNumber } from "../utils/formatters";
 
 export default function ToDoNext({ items = [], loading = false, threshold = 5 }) {
   const lowStock = useMemo(
-    () => items.filter((i) => Number(i.quantity ?? 0) > 0 && Number(i.quantity ?? 0) < threshold && i.status !== "INACTIVE"),
+    () => items.filter((item) => Number(item.quantity ?? item.total_stock ?? 0) > 0 && Number(item.quantity ?? item.total_stock ?? 0) < threshold && item.status !== "INACTIVE"),
     [items, threshold]
   );
 
   const missing = useMemo(
-    () => items.filter((i) => Number(i.quantity ?? 0) <= 0 || i.status === "INACTIVE"),
+    () => items.filter((item) => Number(item.quantity ?? item.total_stock ?? 0) <= 0 || item.status === "INACTIVE"),
     [items]
   );
 
@@ -18,6 +19,10 @@ export default function ToDoNext({ items = [], loading = false, threshold = 5 })
         <span style={{ color: "#6B7280" }}>Inventory watchlist</span>
       </div>
 
+      <div style={{ color: "#6B7280", marginBottom: 10, lineHeight: 1.5 }}>
+        Use this as your restock cue: low-stock items should be purchased soon, while out-of-stock items need immediate attention.
+      </div>
+
       {loading && <div style={{ color: "#6B7280" }}>Checking inventory...</div>}
 
       {!loading && lowStock.length === 0 && missing.length === 0 && (
@@ -25,21 +30,21 @@ export default function ToDoNext({ items = [], loading = false, threshold = 5 })
       )}
 
       <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}>
-        {lowStock.map((i) => (
-          <div key={`low-${i.id}`} className="card" style={{ borderColor: "rgba(234,179,8,0.35)" }}>
+        {lowStock.map((item) => (
+          <div key={`low-${item.id}`} className="card" style={{ borderColor: "rgba(234,179,8,0.35)" }}>
             <div style={{ fontWeight: 800 }}>Low stock</div>
-            <div style={{ color: "#b45309" }}>{i.ingredient_name}</div>
-            <div style={{ marginTop: 4 }}>Qty: {i.quantity ?? 0}</div>
-            {i.lastUpdated && <div style={{ color: "#6B7280", marginTop: 2 }}>Updated: {new Date(i.lastUpdated).toLocaleString()}</div>}
+            <div style={{ color: "#b45309" }}>{item.ingredient_name}</div>
+            <div style={{ marginTop: 4 }}>Qty: {formatNumber(item.quantity ?? item.total_stock ?? 0)}</div>
+            {item.lastUpdated && <div style={{ color: "#6B7280", marginTop: 2 }}>Updated: {formatDateTimeFriendly(item.lastUpdated)}</div>}
           </div>
         ))}
 
-        {missing.map((i) => (
-          <div key={`missing-${i.id}`} className="card" style={{ borderColor: "rgba(239,68,68,0.35)" }}>
-            <div style={{ fontWeight: 800 }}>Missing ingredient</div>
-            <div style={{ color: "#b91c1c" }}>{i.ingredient_name}</div>
-            <div style={{ marginTop: 4 }}>Qty: {i.quantity ?? 0}</div>
-            {i.lastUpdated && <div style={{ color: "#6B7280", marginTop: 2 }}>Last updated: {new Date(i.lastUpdated).toLocaleString()}</div>}
+        {missing.map((item) => (
+          <div key={`missing-${item.id}`} className="card" style={{ borderColor: "rgba(239,68,68,0.35)" }}>
+            <div style={{ fontWeight: 800 }}>Out of stock</div>
+            <div style={{ color: "#b91c1c" }}>{item.ingredient_name}</div>
+            <div style={{ marginTop: 4 }}>Qty: {formatNumber(item.quantity ?? item.total_stock ?? 0)}</div>
+            {item.lastUpdated && <div style={{ color: "#6B7280", marginTop: 2 }}>Last updated: {formatDateTimeFriendly(item.lastUpdated)}</div>}
           </div>
         ))}
       </div>

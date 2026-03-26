@@ -1,7 +1,0 @@
-/* reset the default Vite layout constraints */
-#root {
-  max-width: none;
-  margin: 0;
-  padding: 0;
-  width: 100%;
-}

@@ -1,9 +1,71 @@
 const express = require("express");
+const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
 const pool = require("../db");
+const { requireAuth, requireRole } = require("../middleware/auth");
+
 const router = express.Router();
 
+router.use(requireAuth);
+
+router.post(
+  "/avatar-upload",
+  express.raw({ type: ["image/png", "image/jpeg", "image/webp", "image/gif"], limit: "5mb" }),
+  async (req, res) => {
+    try {
+      if (!req.body || !req.body.length) {
+        return res.status(400).json({ message: "Image file is required" });
+      }
+
+      const contentType = String(req.headers["content-type"] || "").toLowerCase();
+      const extension =
+        contentType === "image/png" ? ".png" :
+        contentType === "image/jpeg" ? ".jpg" :
+        contentType === "image/webp" ? ".webp" :
+        contentType === "image/gif" ? ".gif" :
+        null;
+
+      if (!extension) {
+        return res.status(400).json({ message: "Unsupported image type" });
+      }
+
+      const uploadsDir = path.join(__dirname, "..", "uploads", "avatars");
+      fs.mkdirSync(uploadsDir, { recursive: true });
+
+      const fileName = `${Date.now()}-${crypto.randomUUID()}${extension}`;
+      const filePath = path.join(uploadsDir, fileName);
+      fs.writeFileSync(filePath, req.body);
+
+      const avatarUrl = `${req.protocol}://${req.get("host")}/uploads/avatars/${fileName}`;
+      res.status(201).json({ avatar_url: avatarUrl });
+    } catch (err) {
+      console.error("Avatar upload failed:", err.message);
+      res.status(500).json({ message: "Failed to upload avatar" });
+    }
+  }
+);
+
+router.get("/me", async (req, res) => {
+  const userId = req.user.id;
+
+  const [rows] = await pool.query(
+    `SELECT u.id, u.full_name, u.first_name, u.last_name, u.username, u.email, u.phone, u.role, u.status,
+            up.address, up.gender, up.birthdate, up.avatar_url,
+            up.emergency_contact_name, up.emergency_contact_phone,
+            sd.employee_no, sd.position_title, sd.hire_date, sd.shift_start, sd.shift_end, sd.notes
+     FROM users u
+     LEFT JOIN user_profiles up ON up.user_id = u.id
+     LEFT JOIN staff_details sd ON sd.user_id = u.id
+     WHERE u.id = ?`,
+    [userId]
+  );
+
+  res.json(rows[0] || null);
+});
+
 // Get staff profile by userId
-router.get("/staff/:userId", async (req, res) => {
+router.get("/staff/:userId", requireRole("OWNER"), async (req, res) => {
   const { userId } = req.params;
 
   const [rows] = await pool.query(
@@ -22,7 +84,7 @@ router.get("/staff/:userId", async (req, res) => {
 });
 
 
-router.put("/staff/:userId", async (req, res) => {
+router.put("/staff/:userId", requireRole("OWNER"), async (req, res) => {
   const { userId } = req.params;
 
   const {

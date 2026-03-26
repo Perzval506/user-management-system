@@ -6,32 +6,34 @@ import "../styles/landing.css";
 export default function Landing() {
   const navigate = useNavigate();
 
-  // Auto-redirect if already logged in
   const token = localStorage.getItem("token");
-  const rawUser = localStorage.getItem("user");
-  const user = rawUser ? JSON.parse(rawUser) : null;
+  let user = null;
+  try {
+    const rawUser = localStorage.getItem("user");
+    user = rawUser ? JSON.parse(rawUser) : null;
+  } catch {
+    user = null;
+  }
 
   if (token && user) {
     if (user.role === "OWNER") return <Navigate to="/admin" replace />;
-    if (user.role === "CASHIER" || user.role === "STOCKROOM_STAFF")
+    if (user.role === "CASHIER" || user.role === "STOCKROOM_STAFF") {
       return <Navigate to="/staff" replace />;
+    }
     return <Navigate to="/login" replace />;
   }
 
   return (
     <div className="lp">
-      {/* background pizza (cropped) */}
       <img className="lp-pizzaBg" src={pizzaImg} alt="" aria-hidden="true" />
 
-      {/* top logo */}
       <div className="lp-topLogo">
-        <img src={boydsLogo} alt="Boyd’s Pizza House" />
+        <img src={boydsLogo} alt="Boyd's Pizza House" />
       </div>
 
-      {/* centered text */}
       <div className="lp-centerWrap">
         <div>
-          <h1 className="lp-title">Boyd’s Pizza House</h1>
+          <h1 className="lp-title">Boyd's Pizza House</h1>
           <h2 className="lp-subtitle">User Management System</h2>
 
           <div className="lp-actions">

@@ -1,11 +1,15 @@
 const express = require("express");
 const pool = require("../db");
 const router = express.Router();
+const { getColumns, tableExists } = require("../utils/dbIntrospection");
 
 // Basic purchases ledger (palengke-style buying)
 
 router.get("/", async (_req, res) => {
   try {
+    if (!(await tableExists("purchases"))) {
+      return res.json({ items: [], total: 0, setupRequired: true });
+    }
     const [rows] = await pool.query(
       "SELECT id, ingredient_name, quantity, price, created_at FROM purchases ORDER BY created_at DESC"
     );
@@ -34,6 +38,10 @@ router.post("/", async (req, res) => {
 
   const conn = await pool.getConnection();
   try {
+    if (!(await tableExists("purchases"))) {
+      return res.status(503).json({ message: "Purchases setup is incomplete. Run the latest database migration first." });
+    }
+
     await conn.beginTransaction();
 
     const [result] = await conn.query(
@@ -42,21 +50,46 @@ router.post("/", async (req, res) => {
     );
 
     // Keep inventory in sync. If ingredient exists, add to its stock; otherwise create a lightweight record.
+    const ingredientCols = await getColumns("ingredients");
+    const hasQuantity = Boolean(ingredientCols.quantity);
+    const hasLastUpdated = Boolean(ingredientCols.last_updated);
+
     const [existing] = await conn.query(
       "SELECT id FROM ingredients WHERE LOWER(ingredient_name) = LOWER(?) FOR UPDATE",
       [ingredientName]
     );
 
     if (existing.length) {
-      await conn.query(
-        "UPDATE ingredients SET quantity = COALESCE(quantity,0)+?, last_updated = NOW() WHERE id=?",
-        [qty, existing[0].id]
-      );
+      const updates = [];
+      const values = [];
+      if (hasQuantity) {
+        updates.push("quantity = COALESCE(quantity,0)+?");
+        values.push(qty);
+      }
+      if (hasLastUpdated) {
+        updates.push("last_updated = NOW()");
+      }
+      if (updates.length) {
+        values.push(existing[0].id);
+        await conn.query(`UPDATE ingredients SET ${updates.join(", ")} WHERE id=?`, values);
+      }
     } else {
       // fall back defaults so we don't block purchases even if base unit is unknown
+      const fields = ["ingredient_name", "category", "base_unit", "base_unit_qty", "status"];
+      const values = [ingredientName.trim(), null, "pack", 1, "ACTIVE"];
+      const placeholders = ["?", "?", "?", "?", "?"];
+      if (hasQuantity) {
+        fields.push("quantity");
+        placeholders.push("?");
+        values.push(qty);
+      }
+      if (hasLastUpdated) {
+        fields.push("last_updated");
+        placeholders.push("NOW()");
+      }
       await conn.query(
-        "INSERT INTO ingredients (ingredient_name, category, base_unit, base_unit_qty, status, quantity, last_updated) VALUES (?,?,?,?,?,?,NOW())",
-        [ingredientName.trim(), null, "pack", 1, "ACTIVE", qty]
+        `INSERT INTO ingredients (${fields.join(", ")}) VALUES (${placeholders.join(", ")})`,
+        values
       );
     }
 

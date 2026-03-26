@@ -11,9 +11,7 @@ export default function Staff() {
     setLoading(true);
     setMsg("");
     try {
-      // If your backend has a "my profile" endpoint, replace this.
-      // Based on your Admin.jsx, you used /profile/staff/:id, so we reuse it.
-      const res = await api.get(`/profile/staff/${user?.id}`);
+      const res = await api.get("/profile/me");
       setProfile(res.data || null);
     } catch (err) {
       setMsg(err?.response?.data?.message || "Failed to load profile");
@@ -25,7 +23,6 @@ export default function Staff() {
 
   useEffect(() => {
     loadMyProfile();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -50,6 +47,16 @@ export default function Staff() {
         ) : (
           <>
             <h3 style={{ marginTop: 0 }}>Staff Details</h3>
+
+            {profile?.avatar_url && (
+              <div style={{ marginBottom: 16 }}>
+                <img
+                  src={profile.avatar_url}
+                  alt={`${profile.full_name || "Staff"} avatar`}
+                  style={{ width: 88, height: 88, borderRadius: 20, objectFit: "cover", border: "1px solid #E7EAF3" }}
+                />
+              </div>
+            )}
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <Field label="Full Name" value={profile?.full_name || "-"} />

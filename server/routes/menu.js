@@ -2,6 +2,31 @@ const express = require("express");
 const pool = require("../db");
 const { requireAuth } = require("../middleware/auth");
 const router = express.Router();
+
+async function createRecipeAndVersion(conn, {
+  recipeName,
+  recipeDescription = null,
+  userId = null,
+  yieldAmount = null,
+  yieldUnit = null,
+  portionSize = null,
+  portionUnit = null,
+} = {}) {
+  const [recipeResult] = await conn.query(
+    "INSERT INTO recipes (recipe_name, description, created_by, status) VALUES (?,?,?,?)",
+    [recipeName, recipeDescription, userId, "ACTIVE"]
+  );
+  const recipeId = recipeResult.insertId;
+
+  const [versionResult] = await conn.query(
+    `INSERT INTO recipe_versions
+      (recipe_id, version_no, yield_amount, yield_unit, portion_size, portion_unit, is_active, created_by)
+     VALUES (?,?,?,?,?,?,?,?)`,
+    [recipeId, 1, yieldAmount, yieldUnit, portionSize, portionUnit, 1, userId]
+  );
+
+  return { recipeId, recipeVersionId: versionResult.insertId };
+}
 // GET list with latest price (by effective_date)
 router.get("/", async (req, res) => {
   try {
@@ -27,19 +52,10 @@ router.post("/", async (req, res) => {
   try {
     await conn.beginTransaction();
 
-    // create recipe
-    const [rRecipe] = await conn.query(
-      'INSERT INTO recipes (recipe_name, description, created_by, status) VALUES (?,?,?,?)',
-      [recipe_name || menu_name, recipe_description || null, null, 'ACTIVE']
-    );
-    const recipeId = rRecipe.insertId;
-
-    // create recipe version
-    const [rVer] = await conn.query(
-      'INSERT INTO recipe_versions (recipe_id, version_no, yield_amount, yield_unit, portion_size, portion_unit, is_active) VALUES (?,?,?,?,?,?,?)',
-      [recipeId, 1, null, null, null, null, 1]
-    );
-    const recipeVersionId = rVer.insertId;
+    const { recipeVersionId } = await createRecipeAndVersion(conn, {
+      recipeName: recipe_name || menu_name,
+      recipeDescription: recipe_description || null,
+    });
 
     // create menu item linked to this recipe_version
     const [rMenu] = await conn.query(
@@ -144,9 +160,9 @@ router.put("/:id/recipe", requireAuth, async (req, res) => {
   if (!Array.isArray(ingredients)) return res.status(400).json({ error: 'ingredients array required' });
   const conn = await pool.getConnection();
   try {
-    // only OWNER/ADMIN allowed to modify recipes
+    // only OWNER allowed to modify recipes
     const role = req.user && req.user.role ? req.user.role : null;
-    const allowed = ['OWNER', 'ADMIN', 'ADMINISTRATOR'];
+    const allowed = ['OWNER'];
     if (!allowed.includes(role)) {
       return res.status(403).json({ error: 'Forbidden' });
     }
@@ -161,16 +177,11 @@ router.put("/:id/recipe", requireAuth, async (req, res) => {
     if (!recipeVersionId) {
       // Auto-create minimal recipe + version so users can save lines on legacy menu rows
       const recipeName = menu.menu_name || `Recipe for menu ${id}`;
-      const [rRecipe] = await conn.query(
-        'INSERT INTO recipes (recipe_name, description, created_by, status) VALUES (?,?,?,?)',
-        [recipeName, null, req.user?.id || null, 'ACTIVE']
-      );
-      const recipeId = rRecipe.insertId;
-      const [rVer] = await conn.query(
-        'INSERT INTO recipe_versions (recipe_id, version_no, is_active, created_by) VALUES (?,?,?,?)',
-        [recipeId, 1, 1, req.user?.id || null]
-      );
-      recipeVersionId = rVer.insertId;
+      const created = await createRecipeAndVersion(conn, {
+        recipeName,
+        userId: req.user?.id || null,
+      });
+      recipeVersionId = created.recipeVersionId;
       await conn.query('UPDATE menu_items SET recipe_version_id=? WHERE id=?', [recipeVersionId, id]);
     }
 
@@ -208,13 +219,28 @@ router.put("/:id/recipe", requireAuth, async (req, res) => {
         await conn.rollback();
         return res.status(400).json({ error: `qty_unit must be one of: ${ALLOWED_UNITS.join(',')}` });
       }
+      if (typeof it.price !== "undefined" && it.price !== "" && it.price !== null) {
+        const price = Number(it.price);
+        if (!isFinite(price) || price < 0) {
+          await conn.rollback();
+          return res.status(400).json({ error: "price must be a number greater than or equal to 0" });
+        }
+      }
     }
 
     // Delete existing lines and insert new ones
     await conn.query('DELETE FROM recipe_ingredients WHERE recipe_version_id = ?', [recipeVersionId]);
     if (ingredients.length) {
-      const insertSql = 'INSERT INTO recipe_ingredients (recipe_version_id, ingredient_id, qty_used, qty_unit, yield_percent) VALUES ?';
-      const rows = ingredients.map(i => [recipeVersionId, i.ingredient_id, i.qty_used, i.qty_unit, i.yield_percent || null]);
+      // New persistence: recipe line pricing is now stored instead of staying draft-only in the browser.
+      const insertSql = 'INSERT INTO recipe_ingredients (recipe_version_id, ingredient_id, qty_used, qty_unit, price, yield_percent) VALUES ?';
+      const rows = ingredients.map(i => [
+        recipeVersionId,
+        i.ingredient_id,
+        i.qty_used,
+        i.qty_unit,
+        i.price === "" || i.price === null || typeof i.price === "undefined" ? null : Number(i.price),
+        i.yield_percent || null,
+      ]);
       await conn.query(insertSql, [rows]);
     }
 
@@ -247,20 +273,12 @@ router.post('/:id/create-recipe', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Menu item already has a linked recipe version' });
     }
 
-    // create recipe (attributed to authenticated user)
     const userId = req.user && req.user.id ? req.user.id : null;
-    const [rRecipe] = await conn.query(
-      'INSERT INTO recipes (recipe_name, description, created_by, status) VALUES (?,?,?,?)',
-      [recipe_name || menu.menu_name, recipe_description || null, userId, 'ACTIVE']
-    );
-    const recipeId = rRecipe.insertId;
-
-    // create recipe version
-    const [rVer] = await conn.query(
-      'INSERT INTO recipe_versions (recipe_id, version_no, yield_amount, yield_unit, portion_size, portion_unit, is_active, created_by) VALUES (?,?,?,?,?,?,?,?)',
-      [recipeId, 1, null, null, null, null, 1, userId]
-    );
-    const recipeVersionId = rVer.insertId;
+    const { recipeId, recipeVersionId } = await createRecipeAndVersion(conn, {
+      recipeName: recipe_name || menu.menu_name,
+      recipeDescription: recipe_description || null,
+      userId,
+    });
 
     // link menu to this recipe_version
     await conn.query('UPDATE menu_items SET recipe_version_id = ? WHERE id = ?', [recipeVersionId, id]);
