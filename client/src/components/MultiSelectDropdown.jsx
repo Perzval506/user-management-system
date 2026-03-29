@@ -33,7 +33,9 @@ export default function MultiSelectDropdown({
   const text = useMemo(() => {
     if (!localSelected.length) return placeholder;
     const chosen = options.filter((o) => localSelected.includes(o.value)).map((o) => o.label);
-    return chosen.length ? chosen.join(", ") : placeholder;
+    if (!chosen.length) return placeholder;
+    if (chosen.length <= 2) return chosen.join(", ");
+    return `${chosen.slice(0, 2).join(", ")} +${chosen.length - 2}`;
   }, [localSelected, options, placeholder]);
 
   const toggle = (value) => {
@@ -58,6 +60,7 @@ export default function MultiSelectDropdown({
       {label && <div className="multiSelectLabel">{label}</div>}
       <button type="button" className={`multiSelectTrigger ${open ? "open" : ""}`} onClick={() => setOpen((v) => !v)}>
         <span className="multiSelectValue">{text}</span>
+        {localSelected.length > 0 ? <span className="multiSelectCount">{localSelected.length}</span> : null}
         <span className="multiSelectCaret">▾</span>
       </button>
 
@@ -68,6 +71,7 @@ export default function MultiSelectDropdown({
               <label key={opt.value} className="multiSelectOption">
                 <input
                   type="checkbox"
+                  className="multiSelectCheck"
                   checked={localSelected.includes(opt.value)}
                   onChange={() => toggle(opt.value)}
                   onClick={(e) => e.stopPropagation()}

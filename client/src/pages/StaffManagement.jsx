@@ -213,20 +213,22 @@ export default function StaffManagement() {
     }
   }
 
+  const msgIsError = /\b(fail|error|invalid|missing|denied|forbidden|not found)\b/i.test(msg);
+
   return (
-    <div style={{ maxWidth: 1100 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "end", gap: 16 }}>
+    <div className="page" style={{ maxWidth: 1140 }}>
+      <div className="pageHeader">
         <div>
-          <h2 style={{ marginTop: 0, marginBottom: 6 }}>My Staff</h2>
+          <h2 className="pageTitle">My Staff</h2>
+          <div className="pageSub">Create and manage team accounts.</div>
           {msg && (
-            <div style={{ color: msg.toLowerCase().includes("fail") ? "#d94a4a" : "#2e9f68" }}>
+            <div className={`inlineStatus ${msgIsError ? "error" : "success"}`}>
               {msg}
             </div>
           )}
         </div>
 
-        {/* Main actions on right */}
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <div className="pageActions">
           <button className="btn btn-ghost" type="button" onClick={loadUsers}>Refresh</button>
           {view !== "CREATE" ? (
             <button className="btn btn-primary" type="button" onClick={openCreate}>Add User</button>
@@ -239,34 +241,38 @@ export default function StaffManagement() {
       {/* LIST */}
       {view === "LIST" && (
         <>
-          <h3 style={{ marginTop: 18 }}>User List</h3>
+          <h3 style={{ marginTop: 0, marginBottom: 10 }}>User List</h3>
 
-          <div style={{ overflowX: "auto", border: "1px solid #E7EAF3", borderRadius: 14 }}>
-            <table width="100%" cellPadding="10" style={{ borderCollapse: "collapse" }}>
+          <div className="tableWrap">
+            <div className="tableTopBar">Users</div>
+            <div style={{ overflowX: "auto" }}>
+              <table className="table">
               <thead>
-                <tr style={{ background: "#FBFBFE" }}>
-                  <th align="left">Name</th>
-                  <th align="left">Username</th>
-                  <th align="left">Role</th>
-                  <th align="left">Status</th>
-                  <th align="left">Actions</th>
+                <tr>
+                  <th>Name</th>
+                  <th>Username</th>
+                  <th>Role</th>
+                  <th>Status</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
 
               <tbody>
                 {users.map((u) => (
-                  <tr key={u.id} style={{ borderTop: "1px solid #E7EAF3" }}>
+                  <tr key={u.id}>
                     <td>{u.full_name}</td>
                     <td>{u.username}</td>
                     <td>{u.role}</td>
                     <td>{u.status}</td>
-                    <td style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <button className="btn" onClick={() => openProfileView(u.id)}>Details</button>
-                      <button className="btn" onClick={() => openProfileEdit(u.id)}>Edit Details</button>
-                      <button className="btn" onClick={() => startEdit(u)}>Edit</button>
-                      <button className="btn" onClick={() => toggleStatus(u)}>
-                        {u.status === "ACTIVE" ? "Deactivate" : "Activate"}
-                      </button>
+                    <td>
+                      <div className="rowActions">
+                        <button className="btn" onClick={() => openProfileView(u.id)}>Details</button>
+                        <button className="btn" onClick={() => openProfileEdit(u.id)}>Edit Details</button>
+                        <button className="btn" onClick={() => startEdit(u)}>Edit</button>
+                        <button className="btn" onClick={() => toggleStatus(u)}>
+                          {u.status === "ACTIVE" ? "Deactivate" : "Activate"}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -279,18 +285,19 @@ export default function StaffManagement() {
                   </tr>
                 )}
               </tbody>
-            </table>
+              </table>
+            </div>
           </div>
         </>
       )}
 
       {/* CREATE */}
       {view === "CREATE" && (
-        <div className="card" style={{ marginTop: 18, padding: 16, borderRadius: 16, border: "1px solid #E7EAF3" }}>
+        <div className="card" style={{ marginTop: 12 }}>
           <h3 style={{ marginTop: 0 }}>Create User</h3>
 
-          <form onSubmit={createUser} style={{ display: "grid", gap: 10, maxWidth: 620 }}>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <form onSubmit={createUser} className="formGrid" style={{ maxWidth: 620 }}>
+            <div className="formRow2">
               <input
                 className="input"
                 placeholder="First name"
@@ -360,13 +367,13 @@ export default function StaffManagement() {
 
       {/* EDIT */}
       {view === "EDIT" && (
-        <div className="card" style={{ marginTop: 18, padding: 16, borderRadius: 16, border: "1px solid #E7EAF3" }}>
+        <div className="card" style={{ marginTop: 12 }}>
           <h3 style={{ marginTop: 0 }}>Edit User</h3>
 
           {!editing ? (
             <p style={{ opacity: 0.8 }}>Select a user from the list.</p>
           ) : (
-            <form onSubmit={saveEdit} style={{ display: "grid", gap: 10, maxWidth: 620 }}>
+            <form onSubmit={saveEdit} className="formGrid" style={{ maxWidth: 620 }}>
               <input
                 className="input"
                 value={editing.full_name}
@@ -471,7 +478,7 @@ export default function StaffManagement() {
 const modalBackdrop = {
   position: "fixed",
   inset: 0,
-  background: "rgba(0,0,0,0.55)",
+  background: "rgba(15, 23, 42, 0.24)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",

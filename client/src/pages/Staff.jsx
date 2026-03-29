@@ -29,14 +29,14 @@ export default function Staff() {
   }, []);
 
   return (
-    <div style={{ maxWidth: 900 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "end", gap: 16 }}>
+    <div className="page" style={{ maxWidth: 980 }}>
+      <div className="pageHeader">
         <div>
-          <h2 style={{ marginTop: 0, marginBottom: 6 }}>My Profile</h2>
-          <div style={{ color: "#6B7280" }}>
+          <h2 className="pageTitle">My Profile</h2>
+          <div className="pageSub" style={{ marginTop: 6 }}>
             Logged in as <b>{user?.username}</b> ({user?.role})
           </div>
-          {msg && <div style={{ marginTop: 10, color: "#d94a4a" }}>{msg}</div>}
+          {msg && <div className="inlineStatus error">{msg}</div>}
         </div>
 
         <button className="btn btn-ghost" type="button" onClick={loadMyProfile}>
@@ -44,7 +44,7 @@ export default function Staff() {
         </button>
       </div>
 
-      <div className="card" style={{ marginTop: 18, padding: 16, borderRadius: 16, border: "1px solid #E7EAF3" }}>
+      <div className="card">
         {loading ? (
           <div>Loading...</div>
         ) : (
@@ -74,9 +74,9 @@ export default function Staff() {
 
 function Field({ label, value }) {
   return (
-    <div style={{ padding: 12, borderRadius: 14, background: "#FBFBFE", border: "1px solid #E7EAF3" }}>
+    <div style={{ padding: 14, borderRadius: 14, background: "#FBFBFE", border: "1px solid #E7EAF3" }}>
       <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 6 }}>{label}</div>
-      <div style={{ fontWeight: 800 }}>{value}</div>
+      <div style={{ fontWeight: 800, fontSize: 15 }}>{value}</div>
     </div>
   );
 }

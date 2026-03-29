@@ -17,15 +17,15 @@ const buildDefaultLine = (ingredientId, ingredientsOpt, units) => {
 
 const RecipeLineRow = React.memo(function RecipeLineRow({ line, idx, ingredientsOpt, units, onChange, onRemove }) {
   return (
-    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+    <div className="recipeLineRow">
       <select
+        className="input input-select recipeLineFieldWide"
         value={line.ingredient_id || ""}
         onChange={(e) => {
           const newId = Number(e.target.value) || null;
           const sel = ingredientsOpt.find((x) => x.id === newId);
           onChange(idx, { ingredient_id: newId, qty_unit: sel ? sel.base_unit : "" });
         }}
-        style={{ minWidth: 220 }}
       >
         <option value="">-- select ingredient --</option>
         {ingredientsOpt.map((i) => (
@@ -36,19 +36,19 @@ const RecipeLineRow = React.memo(function RecipeLineRow({ line, idx, ingredients
       </select>
 
       <input
+        className="input recipeLineFieldNarrow"
         placeholder="qty"
         type="number"
         step="0.001"
         min="0.001"
         value={line.qty_used ?? ""}
         onChange={(e) => onChange(idx, { qty_used: e.target.value })}
-        style={{ width: 100, padding: 6 }}
       />
 
       <select
+        className="input input-select recipeLineFieldNarrow"
         value={line.qty_unit ?? ""}
         onChange={(e) => onChange(idx, { qty_unit: e.target.value })}
-        style={{ width: 120, padding: 6 }}
       >
         <option value="">-- unit --</option>
         {units.map((u) => (
@@ -59,16 +59,17 @@ const RecipeLineRow = React.memo(function RecipeLineRow({ line, idx, ingredients
       </select>
 
       <input
+        className="input recipeLineFieldNarrow"
         placeholder="price"
         type="number"
         step="0.01"
         min="0"
         value={line.price ?? ""}
         onChange={(e) => onChange(idx, { price: e.target.value })}
-        style={{ width: 100, padding: 6 }}
       />
 
       <input
+        className="input recipeLineFieldNarrow"
         placeholder="yield %"
         type="number"
         step="0.01"
@@ -76,10 +77,9 @@ const RecipeLineRow = React.memo(function RecipeLineRow({ line, idx, ingredients
         max="100"
         value={line.yield_percent ?? ""}
         onChange={(e) => onChange(idx, { yield_percent: e.target.value })}
-        style={{ width: 100, padding: 6 }}
       />
 
-      <button onClick={() => onRemove(idx)} style={{ padding: "6px 10px" }}>
+      <button type="button" className="btn btn-ghost recipeLineRemoveBtn" onClick={() => onRemove(idx)}>
         Remove
       </button>
     </div>
@@ -331,12 +331,12 @@ export default function RecipeBuilder({ menuId, onClose }) {
           />
         ))}
 
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => setShowDiscardConfirm(true)} disabled={!dirty} style={{ padding: "8px 12px" }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <button type="button" className="btn btn-ghost" onClick={() => setShowDiscardConfirm(true)} disabled={!dirty}>
             Discard
           </button>
           <div style={{ flex: 1 }} />
-          <button onClick={save} disabled={saving} style={{ padding: "8px 12px" }}>
+          <button type="button" className="btn btn-primary" onClick={save} disabled={saving}>
             {saving ? "Saving..." : "Save"}
           </button>
         </div>

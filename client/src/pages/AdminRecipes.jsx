@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import api from "../services/api";
 import useUnits from "../hooks/useUnits";
+import { useToast } from "../components/Toast";
 
 export default function AdminRecipes() {
+  const toast = useToast();
   const [menuItems, setMenuItems] = useState([]);
   const [ingredients, setIngredients] = useState([]);
   const [selectedMenu, setSelectedMenu] = useState(null);
@@ -74,7 +76,7 @@ export default function AdminRecipes() {
         yield_percent: ln.yield_percent || null
       })) };
       await api.put(`/menu/${selectedMenu}/recipe`, payload);
-      alert('Recipe saved');
+      toast.push({ type: "success", title: "Saved", message: "Recipe saved successfully." });
       // reload saved recipe lines
       const res = await api.get(`/menu/${selectedMenu}/recipe`);
       if (res && res.data) {
@@ -87,7 +89,9 @@ export default function AdminRecipes() {
         })) : []);
       }
     } catch (e) {
-      setErr(e?.response?.data?.error || e?.response?.data?.message || e?.message || 'Save failed');
+      const message = e?.response?.data?.error || e?.response?.data?.message || e?.message || 'Save failed';
+      setErr(message);
+      toast.push({ type: "error", title: "Save failed", message });
     } finally {
       setSaving(false);
     }
@@ -122,11 +126,16 @@ export default function AdminRecipes() {
   }, [selectedMenu]);
 
   return (
-    <div style={{ maxWidth: 1000, margin: '30px auto', padding: 12 }}>
-      <h2>Recipe Management</h2>
+    <div className="page" style={{ maxWidth: 1100 }}>
+      <div className="pageHeader">
+        <div>
+          <h2 className="pageTitle">Recipe Management</h2>
+          <div className="pageSub">Build and update recipe lines for each menu item.</div>
+        </div>
+      </div>
       {err && <div style={{ color: 'var(--danger)' }}>{err}</div>}
 
-      <div style={{ marginTop: 12 }}>
+      <div className="card">
         <label>Menu Item</label>
         <select value={selectedMenu || ''} onChange={(e) => setSelectedMenu(e.target.value)} className="input">
           <option value="">-- select menu item --</option>
@@ -136,12 +145,12 @@ export default function AdminRecipes() {
         </select>
       </div>
 
-      <div style={{ marginTop: 12 }}>
-        <h3>Recipe Lines</h3>
+      <div className="card" style={{ marginTop: 12 }}>
+        <h3 style={{ marginTop: 0 }}>Recipe Lines</h3>
         <button className="btn" onClick={startAddLine}>Add Line</button>
 
         {adding && (
-          <div style={{ marginTop: 8, padding: 8, border: '1px solid #ddd' }}>
+          <div className="card" style={{ marginTop: 10, padding: 12 }}>
             <label>Ingredient</label>
             <select value={newLine.ingredient_id} onChange={(e) => setNewLine({ ...newLine, ingredient_id: e.target.value })} className="input">
               <option value="">-- select ingredient --</option>
@@ -165,9 +174,10 @@ export default function AdminRecipes() {
         )}
 
         <div style={{ marginTop: 12 }}>
-          <table width="100%" cellPadding={8} style={{ borderCollapse: 'collapse' }}>
+          <div className="tableWrap">
+            <table className="table">
             <thead>
-              <tr style={{ background: '#f3f3f3' }}>
+              <tr>
                 <th>Ingredient</th>
                 <th>Qty</th>
                 <th>Unit</th>
@@ -176,7 +186,7 @@ export default function AdminRecipes() {
             </thead>
             <tbody>
               {lines.map((ln) => (
-                <tr key={ln.id} style={{ borderTop: '1px solid #eee' }}>
+                <tr key={ln.id}>
                   <td>
                     <select value={ln.ingredient_id} onChange={(e) => updateLine(ln.id, { ingredient_id: e.target.value })} className="input">
                       <option value="">-- select ingredient --</option>
@@ -195,14 +205,15 @@ export default function AdminRecipes() {
                   <td><button className="btn btn-ghost" onClick={() => removeLine(ln.id)}>Remove</button></td>
                 </tr>
               ))}
-              {lines.length === 0 && (
-                <tr><td colSpan={4} style={{ opacity: 0.7 }}>No lines added.</td></tr>
-              )}
+                {lines.length === 0 && (
+                  <tr><td colSpan={4} style={{ opacity: 0.7 }}>No lines added.</td></tr>
+                )}
             </tbody>
-          </table>
+            </table>
+          </div>
         </div>
 
-        <div style={{ marginTop: 12 }}>
+        <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
           <button className="btn btn-primary" onClick={saveRecipe} disabled={!selectedMenu || lines.length === 0 || saving}>{saving ? 'Saving...' : 'Save Recipe'}</button>
         </div>
       </div>

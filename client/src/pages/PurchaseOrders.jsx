@@ -52,7 +52,7 @@ const ItemRow = React.memo(function ItemRow({ row, onChange, onRemove, ingredien
   return (
     <tr>
       <td style={{ minWidth: 220 }}>
-        <select className="input" value={row.ingredientId || ""} onChange={handleIngredientChange}>
+        <select className="input input-select" value={row.ingredientId || ""} onChange={handleIngredientChange}>
           <option value="">-- select ingredient --</option>
           {ingredients.map((i) => (
             <option key={i.id} value={i.id}>{i.ingredient_name}</option>
@@ -64,7 +64,21 @@ const ItemRow = React.memo(function ItemRow({ row, onChange, onRemove, ingredien
       <td className="text-right"><input className="input text-right" type="number" step="0.01" min="0" value={row.quantity} onChange={(e) => onChange(row.key, { quantity: e.target.value })} /></td>
       <td className="text-right"><input className="input text-right" type="number" step="0.01" min="0" value={row.price} onChange={(e) => onChange(row.key, { price: e.target.value })} /></td>
       <td className="text-right mono">{formatMoney(subtotal)}</td>
-      <td><button className="btn btn-ghost" onClick={() => onRemove(row.key)}>✕</button></td>
+      <td>
+        <button
+          type="button"
+          className="btn btn-ghost poRemoveBtn"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onRemove(row.key);
+          }}
+          aria-label="Remove line item"
+          title="Remove line item"
+        >
+          ✕
+        </button>
+      </td>
     </tr>
   );
 });
@@ -315,7 +329,7 @@ export default function PurchaseOrders() {
 const modalBackdrop = {
   position: "fixed",
   inset: 0,
-  background: "rgba(0,0,0,0.55)",
+  background: "rgba(15, 23, 42, 0.24)",
   display: "grid",
   placeItems: "center",
   padding: 12,

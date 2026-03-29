@@ -13,9 +13,9 @@ export default function ToDoNext({ items = [], loading = false, threshold = 5 })
 
   return (
     <div className="card" style={{ marginTop: 14 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-        <h4 style={{ margin: 0 }}>To Do Next</h4>
-        <span style={{ color: "#6B7280" }}>Inventory watchlist</span>
+      <div className="watchlistHeader">
+        <h4 className="watchlistTitle">To Do Next</h4>
+        <span className="watchlistSub">Inventory watchlist</span>
       </div>
 
       {loading && <div style={{ color: "#6B7280" }}>Checking inventory...</div>}

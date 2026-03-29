@@ -2,7 +2,10 @@ import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import "../styles/shell.css";
 import boydsLogo from "../assets/boyds-logo.png";
-import { ToastProvider, ToastViewport } from "./Toast";
+import { ToastProvider, ToastViewport, useToast } from "./Toast";
+import { getQuickActions, getQuickActionSelection, quickActionEvents } from "../utils/quickActions";
+
+const SIDEBAR_PREF_KEY = "ums.sidebar.collapsed";
 
 function safeUser() {
   try {
@@ -59,7 +62,189 @@ const Icons = {
         stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
     </svg>
   ),
+  bell: (
+    <svg viewBox="0 0 24 24" fill="none">
+      <path d="M12 4a5 5 0 0 0-5 5v2.8c0 .8-.27 1.57-.76 2.18L5 15.5h14l-1.24-1.52a3.5 3.5 0 0 1-.76-2.18V9a5 5 0 0 0-5-5Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
+      <path d="M9.5 18a2.5 2.5 0 0 0 5 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+    </svg>
+  ),
+  plus: (
+    <svg viewBox="0 0 24 24" fill="none">
+      <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
+    </svg>
+  ),
 };
+
+function formatNotifTime(ts) {
+  if (!ts) return "";
+  try {
+    return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return "";
+  }
+}
+
+function TopbarNotifications() {
+  const { history = [], unreadCount = 0, markAllRead, clearHistory } = useToast();
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+  const recent = history.slice(0, 8);
+
+  useEffect(() => {
+    if (open) markAllRead();
+  }, [open, markAllRead]);
+
+  useEffect(() => {
+    function onDoc(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  useEffect(() => {
+    function onEsc(e) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("keydown", onEsc);
+    return () => document.removeEventListener("keydown", onEsc);
+  }, []);
+
+  return (
+    <div className="notifyWrap" ref={wrapRef}>
+      <button
+        type="button"
+        className={`notifyBtn ${open ? "open" : ""}`}
+        onClick={() => setOpen((prev) => !prev)}
+        aria-label="Open notifications"
+      >
+        <span className="notifyIcon">{Icons.bell}</span>
+        {unreadCount > 0 ? <span className="notifyBadge">{unreadCount > 9 ? "9+" : unreadCount}</span> : null}
+      </button>
+
+      <div className={`notifyPanel ${open ? "open" : ""}`}>
+        <div className="notifyHeader">
+          <div className="notifyTitle">Notifications</div>
+          {history.length > 0 ? (
+            <button type="button" className="notifyClearBtn" onClick={clearHistory}>
+              Clear
+            </button>
+          ) : null}
+        </div>
+
+        {recent.length === 0 ? (
+          <div className="notifyEmpty">No notifications yet.</div>
+        ) : (
+          <div className="notifyList">
+            {recent.map((item) => (
+              <div key={item.id} className={`notifyItem notify-${item.type}`}>
+                <div className="notifyItemTop">
+                  <div className="notifyItemTitle">{item.title || "Notice"}</div>
+                  <div className="notifyItemTime">{formatNotifTime(item.createdAt)}</div>
+                </div>
+                <div className="notifyItemMsg">{item.message || "-"}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function QuickActionsFab({ role, pathname, navigate }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+  const [selectedActionIds, setSelectedActionIds] = useState(() => getQuickActionSelection(role));
+
+  const actions = getQuickActions(role)
+    .filter((item) => selectedActionIds.includes(item.id))
+    .map((item) => ({
+      ...item,
+      icon: Icons[item.iconKey] || Icons.box,
+    }));
+
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    setSelectedActionIds(getQuickActionSelection(role));
+  }, [role]);
+
+  useEffect(() => {
+    function onQuickActionUpdate() {
+      setSelectedActionIds(getQuickActionSelection(role));
+    }
+
+    window.addEventListener(quickActionEvents.updated, onQuickActionUpdate);
+    return () => window.removeEventListener(quickActionEvents.updated, onQuickActionUpdate);
+  }, [role]);
+
+  useEffect(() => {
+    function onDoc(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  useEffect(() => {
+    function onEsc(e) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("keydown", onEsc);
+    return () => document.removeEventListener("keydown", onEsc);
+  }, []);
+
+  return (
+    <div className="quickFabWrap" ref={wrapRef}>
+      <div className={`quickFabPanel ${open ? "open" : ""}`}>
+        <div className="quickFabTitle">Quick Actions</div>
+        {actions.length === 0 ? (
+          <div className="quickFabEmpty">
+            <div>No quick actions selected.</div>
+            {role === "OWNER" ? (
+              <button type="button" className="btn btn-ghost" onClick={() => navigate("/settings")}>
+                Manage in Settings
+              </button>
+            ) : null}
+          </div>
+        ) : (
+          <div className="quickFabList">
+            {actions.map((item) => (
+              <button
+                key={item.to}
+                type="button"
+                className={`quickFabItem ${pathname === item.to ? "active" : ""}`}
+                onClick={() => {
+                  setOpen(false);
+                  navigate(item.to);
+                }}
+              >
+                <span className="quickFabItemIcon">{item.icon}</span>
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <button
+        type="button"
+        className={`quickFabBtn ${open ? "open" : ""}`}
+        onClick={() => setOpen((prev) => !prev)}
+        aria-label="Toggle quick actions"
+      >
+        <span className="quickFabBtnIcon">{Icons.plus}</span>
+      </button>
+    </div>
+  );
+}
 
 export default function AppShell() {
   const navigate = useNavigate();
@@ -72,6 +257,14 @@ export default function AppShell() {
   const [openMenuDrop, setOpenMenuDrop] = useState(false);
   const [openPurchasingDrop, setOpenPurchasingDrop] = useState(false);
   const [openInventoryDrop, setOpenInventoryDrop] = useState(false);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(SIDEBAR_PREF_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
   const itemsRef = useRef(null);
   const menuRef = useRef(null);
   const purchasingRef = useRef(null);
@@ -82,7 +275,24 @@ export default function AppShell() {
     setOpenMenuDrop(false);
     setOpenPurchasingDrop(false);
     setOpenInventoryDrop(false);
+    if (window.innerWidth < 1024) {
+      setSidebarCollapsed(true);
+    }
   }, [location.pathname]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_PREF_KEY, sidebarCollapsed ? "1" : "0");
+    } catch {
+      // ignore persistence errors
+    }
+  }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    if (window.innerWidth < 1024) {
+      setSidebarCollapsed(true);
+    }
+  }, []);
 
   useEffect(() => {
     function onDoc(e) {
@@ -103,11 +313,29 @@ export default function AppShell() {
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
 
+  const requestLogout = () => {
+    setLogoutConfirmOpen(true);
+  };
+
+  const cancelLogout = () => {
+    setLogoutConfirmOpen(false);
+  };
+
   const onLogout = () => {
+    setLogoutConfirmOpen(false);
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     navigate("/login");
   };
+
+  useEffect(() => {
+    if (!logoutConfirmOpen) return;
+    function onEsc(e) {
+      if (e.key === "Escape") setLogoutConfirmOpen(false);
+    }
+    document.addEventListener("keydown", onEsc);
+    return () => document.removeEventListener("keydown", onEsc);
+  }, [logoutConfirmOpen]);
 
   const isActiveGroup = (prefix) => location.pathname.startsWith(prefix);
 
@@ -115,7 +343,15 @@ export default function AppShell() {
     <ToastProvider>
       <ToastViewport />
 
-      <div className="shell">
+      <div className={`shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+        <button
+          type="button"
+          className={`sidebarScrim ${sidebarCollapsed ? "" : "show"}`}
+          onClick={() => setSidebarCollapsed(true)}
+          aria-hidden={sidebarCollapsed}
+          tabIndex={sidebarCollapsed ? -1 : 0}
+        />
+
         <aside className="sidebar">
           <div className="brand" onClick={() => navigate("/")}>
             <div className="brandLogoWrap">
@@ -130,7 +366,6 @@ export default function AppShell() {
           <nav className="nav">
             {role === "OWNER" && (
               <>
-                {/* ✅ FIX: end makes /admin active ONLY on exact /admin */}
                 <NavLink
                   to="/admin"
                   end
@@ -156,12 +391,10 @@ export default function AppShell() {
                     <span className={`chev ${openItems ? "up" : ""}`}>▾</span>
                   </button>
 
-                  {openItems && (
-                    <div className="dropdown">
-                      <button className="dropdownItem" onClick={() => navigate("/admin/items/add")}>Add Ingredient</button>
-                      <button className="dropdownItem" onClick={() => navigate("/admin/items/manage")}>Manage Ingredients</button>
-                    </div>
-                  )}
+                  <div className={`dropdown ${openItems ? "open" : ""}`} aria-hidden={!openItems}>
+                    <button className="dropdownItem" onClick={() => navigate("/admin/items/add")}>Add Ingredient</button>
+                    <button className="dropdownItem" onClick={() => navigate("/admin/items/manage")}>Manage Ingredients</button>
+                  </div>
                 </div>
 
                 <div ref={purchasingRef} className="navGroup">
@@ -175,12 +408,10 @@ export default function AppShell() {
                     <span className={`chev ${openPurchasingDrop ? "up" : ""}`}>▾</span>
                   </button>
 
-                  {openPurchasingDrop && (
-                    <div className="dropdown">
-                      <button className="dropdownItem" onClick={() => navigate("/admin/purchases")}>Quick Purchases</button>
-                      <button className="dropdownItem" onClick={() => navigate("/admin/purchase-orders")}>Purchase Orders</button>
-                    </div>
-                  )}
+                  <div className={`dropdown ${openPurchasingDrop ? "open" : ""}`} aria-hidden={!openPurchasingDrop}>
+                    <button className="dropdownItem" onClick={() => navigate("/admin/purchases")}>Quick Purchases</button>
+                    <button className="dropdownItem" onClick={() => navigate("/admin/purchase-orders")}>Purchase Orders</button>
+                  </div>
                 </div>
 
                 <div ref={inventoryRef} className="navGroup">
@@ -194,11 +425,9 @@ export default function AppShell() {
                     <span className={`chev ${openInventoryDrop ? "up" : ""}`}>▾</span>
                   </button>
 
-                  {openInventoryDrop && (
-                    <div className="dropdown">
-                      <button className="dropdownItem" onClick={() => navigate("/admin/inventory/summary")}>Inventory Summary</button>
-                    </div>
-                  )}
+                  <div className={`dropdown ${openInventoryDrop ? "open" : ""}`} aria-hidden={!openInventoryDrop}>
+                    <button className="dropdownItem" onClick={() => navigate("/admin/inventory/summary")}>Inventory Summary</button>
+                  </div>
                 </div>
 
                 <div ref={menuRef} className="navGroup">
@@ -212,13 +441,11 @@ export default function AppShell() {
                     <span className={`chev ${openMenuDrop ? "up" : ""}`}>▾</span>
                   </button>
 
-                  {openMenuDrop && (
-                    <div className="dropdown">
-                      <button className="dropdownItem" onClick={() => navigate("/admin/menu/add")}>Add Menu Item</button>
-                      <button className="dropdownItem" onClick={() => navigate("/admin/menu/manage")}>Manage Menu Items</button>
-                      <button className="dropdownItem" onClick={() => navigate("/admin/menu/recipes")}>Recipe</button>
-                    </div>
-                  )}
+                  <div className={`dropdown ${openMenuDrop ? "open" : ""}`} aria-hidden={!openMenuDrop}>
+                    <button className="dropdownItem" onClick={() => navigate("/admin/menu/add")}>Add Menu Item</button>
+                    <button className="dropdownItem" onClick={() => navigate("/admin/menu/manage")}>Manage Menu Items</button>
+                    <button className="dropdownItem" onClick={() => navigate("/admin/menu/recipes")}>Recipe</button>
+                  </div>
                 </div>
 
                 <NavLink to="/audit" className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}>
@@ -246,7 +473,7 @@ export default function AppShell() {
             )}
           </nav>
 
-          <button className="logoutBtn" onClick={onLogout}>
+          <button className="logoutBtn" onClick={requestLogout}>
             <span className="logoutDot" />
             Log Out
           </button>
@@ -254,12 +481,19 @@ export default function AppShell() {
 
         <div className="main">
           <header className="topbar">
-            <div className="search">
-              <span className="searchIcon">⌕</span>
-              <input placeholder="Search" />
-            </div>
+            <button
+              type="button"
+              className="sidebarToggleBtn iconOnly"
+              onClick={() => setSidebarCollapsed((prev) => !prev)}
+              aria-label={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+              title={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+            >
+              <span className="sidebarToggleIcon">{Icons.menu}</span>
+            </button>
 
             <div className="topbarSpacer" />
+
+            <TopbarNotifications />
 
             <div className="profile">
               <div className="avatar">{initials(name)}</div>
@@ -271,11 +505,28 @@ export default function AppShell() {
           </header>
 
           <main className="content">
-            <div className="surface">
+            <div className="surface routeSurface" key={location.pathname}>
               <Outlet />
             </div>
           </main>
         </div>
+
+        <QuickActionsFab role={role} pathname={location.pathname} navigate={navigate} />
+
+        {logoutConfirmOpen && (
+          <div className="modalBackdrop" onClick={cancelLogout}>
+            <div className="modalCard modalCard-sm" onClick={(e) => e.stopPropagation()}>
+              <div className="modalHead">
+                <h3 style={{ margin: 0 }}>Are you sure?</h3>
+              </div>
+              <div className="modalMessage">You will be logged out of this account.</div>
+              <div className="modalActions">
+                <button type="button" className="btn btn-ghost" onClick={cancelLogout}>Cancel</button>
+                <button type="button" className="btn btn-primary" onClick={onLogout}>Log Out</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </ToastProvider>
   );

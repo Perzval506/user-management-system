@@ -3,7 +3,6 @@ import api from "../services/api";
 import RecipeBuilder from "../components/RecipeBuilder";
 import ConfirmModal from "../components/ConfirmModal";
 import CreateRecipeModal from "../components/CreateRecipeModal";
-import { useNavigate } from "react-router-dom";
 import { useToast } from "../components/Toast";
 
 const emptyForm = {
@@ -15,7 +14,6 @@ const emptyForm = {
 };
 
 export default function AdminMenu() {
-  const nav = useNavigate();
   const toast = useToast();
 
   const [items, setItems] = useState([]);
@@ -26,6 +24,8 @@ export default function AdminMenu() {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState("create"); // create | edit
   const [editingId, setEditingId] = useState(null);
+  const [editingHasRecipe, setEditingHasRecipe] = useState(false);
+  const [editingMenuName, setEditingMenuName] = useState("");
   const [form, setForm] = useState(emptyForm);
 
   // recipe modal
@@ -68,6 +68,8 @@ export default function AdminMenu() {
   function openCreate() {
     setMode("create");
     setEditingId(null);
+    setEditingHasRecipe(false);
+    setEditingMenuName("");
     setForm(emptyForm);
     setOpen(true);
   }
@@ -75,6 +77,8 @@ export default function AdminMenu() {
   function openEdit(row) {
     setMode("edit");
     setEditingId(row.id);
+    setEditingHasRecipe(Boolean(row.recipe_version_id));
+    setEditingMenuName(row.menu_name ?? "");
     setForm({
       menu_name: row.menu_name ?? "",
       description: row.description ?? "",
@@ -89,6 +93,8 @@ export default function AdminMenu() {
     setOpen(false);
     setMode("create");
     setEditingId(null);
+    setEditingHasRecipe(false);
+    setEditingMenuName("");
     setForm(emptyForm);
   }
 
@@ -177,6 +183,23 @@ export default function AdminMenu() {
     setShowCreateRecipe(true);
   }
 
+  function openRecipeFromEditModal() {
+    if (!editingId) return;
+    const targetId = editingId;
+    const hasRecipe = editingHasRecipe;
+    const nameFromForm = String(form.menu_name || "").trim();
+    const initialName = nameFromForm || editingMenuName || "";
+
+    closeModal();
+
+    if (hasRecipe) {
+      openRecipeEditor({ id: targetId });
+      return;
+    }
+
+    openCreateRecipe({ id: targetId, menu_name: initialName });
+  }
+
   function handleCloseRecipe() {
     try {
       const key = `recipe_draft:${recipeMenuId}`;
@@ -240,16 +263,18 @@ export default function AdminMenu() {
         </div>
 
         <div className="pageActions">
-          <button className="btn btn-ghost" onClick={() => nav("/admin")}>Back</button>
           <button className="btn btn-ghost" onClick={load}>Refresh</button>
           <button className="btn btn-primary" onClick={openCreate}>Create Menu Item</button>
         </div>
       </div>
 
-      <div style={{ marginBottom: 12 }}>
-        <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
-          <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
-          Show INACTIVE
+      <div className="tableFilterBar">
+        <label className="toggleRow">
+          <span className="toggleControl">
+            <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
+            <span className="toggleSlider" />
+          </span>
+          <span className="toggleText">Show INACTIVE</span>
         </label>
       </div>
 
@@ -286,13 +311,6 @@ export default function AdminMenu() {
                     <td>
                       <div className="rowActions">
                         <button className="btn" onClick={() => openEdit(row)}>Edit</button>
-
-                        {row.recipe_version_id ? (
-                          <button className="btn" onClick={() => openRecipeEditor(row)}>Edit Recipe</button>
-                        ) : (
-                          <button className="btn" onClick={() => openCreateRecipe(row)}>Create Recipe</button>
-                        )}
-
                         <button className="btn" onClick={() => openPrice(row)}>Update Price</button>
 
                         {row.status === "INACTIVE" ? (
@@ -372,6 +390,22 @@ export default function AdminMenu() {
                 </select>
               </div>
 
+              {mode === "edit" && (
+                <div className="menuInlineTool">
+                  <div>
+                    <div className="menuInlineToolTitle">Recipe</div>
+                    <div className="menuInlineToolSub">
+                      {editingHasRecipe
+                        ? "Manage ingredient lines and costing from Recipe Builder."
+                        : "No recipe yet. Create one for this menu item."}
+                    </div>
+                  </div>
+                  <button type="button" className="btn" onClick={openRecipeFromEditModal}>
+                    {editingHasRecipe ? "Edit Recipe" : "Create Recipe"}
+                  </button>
+                </div>
+              )}
+
               <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
                 <button type="button" className="btn btn-ghost" onClick={closeModal}>Cancel</button>
                 <button type="submit" className="btn btn-primary">{mode === "create" ? "Create" : "Save"}</button>
@@ -448,7 +482,7 @@ export default function AdminMenu() {
 const modalBackdrop = {
   position: "fixed",
   inset: 0,
-  background: "rgba(0,0,0,0.55)",
+  background: "rgba(15, 23, 42, 0.24)",
   display: "grid",
   placeItems: "center",
   padding: 12,
@@ -464,11 +498,11 @@ const modalCard = {
 };
 
 const modalWideCard = {
-  width: "min(980px, 100%)",
+  width: "min(980px, calc(100vw - 32px))",
   background: "white",
   borderRadius: 14,
-  padding: 16,
+  padding: 18,
   boxShadow: "0 18px 60px rgba(0,0,0,0.35)",
-  maxHeight: "90vh",
+  height: "min(920px, 60vh)",
   overflowY: "auto",
 };

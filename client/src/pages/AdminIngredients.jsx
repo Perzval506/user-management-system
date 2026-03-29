@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import api from "../services/api";
-import { useNavigate } from "react-router-dom";
 import useUnits from "../hooks/useUnits";
 import { useToast } from "../components/Toast";
 import ToDoNext from "../components/ToDoNext";
@@ -15,7 +14,6 @@ const emptyForm = {
 };
 
 export default function AdminIngredients() {
-  const nav = useNavigate();
   const toast = useToast();
 
   const [items, setItems] = useState([]);
@@ -165,7 +163,6 @@ export default function AdminIngredients() {
         </div>
 
         <div className="pageActions">
-          <button className="btn btn-ghost" onClick={() => nav("/admin")}>Back</button>
           <button className="btn btn-ghost" onClick={load}>Refresh</button>
           <button className="btn btn-primary" onClick={openCreate}>Create Ingredient</button>
         </div>
@@ -173,10 +170,13 @@ export default function AdminIngredients() {
 
       <ToDoNext items={items} loading={loading} />
 
-      <div style={{ marginBottom: 12 }}>
-        <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
-          <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
-          Show INACTIVE
+      <div className="tableFilterBar">
+        <label className="toggleRow">
+          <span className="toggleControl">
+            <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
+            <span className="toggleSlider" />
+          </span>
+          <span className="toggleText">Show INACTIVE</span>
         </label>
       </div>
 
@@ -293,5 +293,5 @@ export default function AdminIngredients() {
   );
 }
 
-const modalBackdrop = { position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "grid", placeItems: "center", padding: 12, zIndex: 9999 };
+const modalBackdrop = { position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.24)", display: "grid", placeItems: "center", padding: 12, zIndex: 9999 };
 const modalCard = { width: "min(720px, 100%)", background: "white", borderRadius: 14, padding: 16, boxShadow: "0 18px 60px rgba(0,0,0,0.35)" };
