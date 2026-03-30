@@ -11,6 +11,8 @@
   --primarySoft: rgba(209, 122, 45, 0.14);
 
   --shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+  --shadowStrong: 0 24px 60px rgba(15, 23, 42, 0.18);
+  --ringSoft: 0 0 0 4px rgba(209, 122, 45, 0.15);
   --radius: 16px;
   --radius2: 14px;
 
@@ -57,12 +59,6 @@
   flex-direction: column;
   overflow-y: auto;
   transition: transform 280ms ease, opacity 220ms ease;
-}
-
-.shell.sidebar-collapsed .sidebar{
-  transform: translateX(-105%);
-  opacity: 0;
-  pointer-events: none;
 }
 
 .shell.sidebar-collapsed .brand{
@@ -878,6 +874,11 @@
   background: rgba(239, 68, 68, 0.08);
   color: #a12a2a;
 }
+.badge-pending {
+  border-color: rgba(245, 158, 11, 0.32);
+  background: rgba(245, 158, 11, 0.10);
+  color: #a16207;
+}
 
 .text-right { text-align: right; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
@@ -1526,6 +1527,12 @@ input[type="checkbox"]{
     transform: translateX(0);
     opacity: 1;
     pointer-events: auto;
+  }
+
+  .shell.sidebar-collapsed .sidebar{
+    transform: translateX(-110%);
+    opacity: 0;
+    pointer-events: none;
   }
 
   .sidebarScrim{

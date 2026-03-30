@@ -3,7 +3,13 @@ import { formatDateTimeFriendly, formatNumber } from "../utils/formatters";
 
 export default function ToDoNext({ items = [], loading = false, threshold = 5 }) {
   const lowStock = useMemo(
-    () => items.filter((item) => Number(item.quantity ?? item.total_stock ?? 0) > 0 && Number(item.quantity ?? item.total_stock ?? 0) < threshold && item.status !== "INACTIVE"),
+    () =>
+      items.filter(
+        (item) =>
+          Number(item.quantity ?? item.total_stock ?? 0) > 0 &&
+          Number(item.quantity ?? item.total_stock ?? 0) <= threshold &&
+          item.status !== "INACTIVE"
+      ),
     [items, threshold]
   );
 

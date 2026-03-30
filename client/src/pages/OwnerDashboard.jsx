@@ -4,6 +4,8 @@ import api from "../services/api";
 import { useToast } from "../components/Toast";
 import { formatDateLong, formatDateTimeFriendly, formatMoney, formatNumber } from "../utils/formatters";
 
+const LOW_STOCK_THRESHOLD = 5;
+
 function DashboardList({ title, emptyText, items, renderItem, actionLabel, onAction }) {
   return (
     <div className="card">
@@ -90,8 +92,19 @@ export default function OwnerDashboard() {
     () => dashboard.users.filter((user) => user.role !== "OWNER" && user.status === "INACTIVE").length,
     [dashboard.users]
   );
-  const lowStockItems = useMemo(
-    () => dashboard.inventory.filter((item) => Number(item.total_stock || 0) > 0 && Number(item.total_stock || 0) < 5).slice(0, 5),
+  const lowStockInventory = useMemo(
+    () =>
+      dashboard.inventory
+        .filter((item) => Number(item.total_stock || 0) > 0 && Number(item.total_stock || 0) <= LOW_STOCK_THRESHOLD)
+        .sort((a, b) => Number(a.total_stock || 0) - Number(b.total_stock || 0)),
+    [dashboard.inventory]
+  );
+  const inventoryAlerts = useMemo(
+    () =>
+      dashboard.inventory
+        .filter((item) => Number(item.total_stock || 0) <= LOW_STOCK_THRESHOLD)
+        .sort((a, b) => Number(a.total_stock || 0) - Number(b.total_stock || 0))
+        .slice(0, 8),
     [dashboard.inventory]
   );
   const outOfStockCount = useMemo(
@@ -145,7 +158,7 @@ export default function OwnerDashboard() {
         </div>
         <div className="card">
           <div style={{ color: "#6B7280", marginBottom: 4 }}>Low stock items</div>
-          <div style={{ fontSize: 26, fontWeight: 800 }}>{lowStockItems.length}</div>
+          <div style={{ fontSize: 26, fontWeight: 800 }}>{lowStockInventory.length}</div>
         </div>
         <div className="card">
           <div style={{ color: "#6B7280", marginBottom: 4 }}>Out of stock</div>
@@ -173,15 +186,22 @@ export default function OwnerDashboard() {
           emptyText="Stock levels look healthy right now."
           actionLabel="Open Inventory"
           onAction={() => navigate("/admin/inventory/summary")}
-          items={lowStockItems}
+          items={inventoryAlerts}
           renderItem={(item) => (
             <div key={item.id} style={listRow}>
               <div>
                 <div style={{ fontWeight: 800 }}>{item.ingredient_name}</div>
-                <div style={{ color: "#6B7280", fontSize: 13 }}>{item.base_unit || "-"}</div>
+                <div style={{ color: "#6B7280", fontSize: 13 }}>
+                  {item.base_unit || "-"} | {Number(item.total_stock || 0) <= 0 ? "Restock now" : `Low stock (${LOW_STOCK_THRESHOLD} or below)`}
+                </div>
               </div>
-              <div className="mono" style={{ fontWeight: 800 }}>
-                {formatNumber(item.total_stock)}
+              <div style={{ display: "grid", gap: 6, justifyItems: "end" }}>
+                <span className={Number(item.total_stock || 0) <= 0 ? "badge badge-inactive" : "badge badge-pending"}>
+                  {Number(item.total_stock || 0) <= 0 ? "Out" : "Low"}
+                </span>
+                <div className="mono" style={{ fontWeight: 800 }}>
+                  {formatNumber(item.total_stock)}
+                </div>
               </div>
             </div>
           )}

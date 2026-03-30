@@ -333,6 +333,13 @@ export default function AppShell() {
       <ToastViewport />
 
       <div className={`shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+        <button
+          type="button"
+          className={`sidebarScrim ${sidebarCollapsed ? "" : "show"}`}
+          onClick={() => setSidebarCollapsed(true)}
+          aria-label="Close main menu"
+        />
+
         <aside className="sidebar">
           <div className="brand" onClick={() => navigate(homePathForRole(role))}>
             <div className="brandLogoWrap">
@@ -378,7 +385,7 @@ export default function AppShell() {
                   </button>
 
                   {openItems && (
-                    <div className="dropdown">
+                    <div className="dropdown open">
                       <button
                         className="dropdownItem"
                         onClick={() => navigate("/admin/items/manage")}
@@ -409,7 +416,7 @@ export default function AppShell() {
                   </button>
 
                   {openPurchasingDrop && (
-                    <div className="dropdown">
+                    <div className="dropdown open">
                       <button className="dropdownItem" onClick={() => navigate("/admin/purchases")}>
                         Quick Purchases
                       </button>
@@ -437,7 +444,7 @@ export default function AppShell() {
                   </button>
 
                   {openMenuDrop && (
-                    <div className="dropdown">
+                    <div className="dropdown open">
                       {/* New consolidation: menu work now starts from one management entry point. */}
                       <button
                         className="dropdownItem"
