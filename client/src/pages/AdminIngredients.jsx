@@ -377,5 +377,5 @@ export default function AdminIngredients() {
   );
 }
 
-const modalBackdrop = { position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "grid", placeItems: "center", padding: 12, zIndex: 9999 };
+const modalBackdrop = { position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.24)", display: "grid", placeItems: "center", padding: 12, zIndex: 9999 };
 const modalCard = { width: "min(720px, 100%)", background: "white", borderRadius: 14, padding: 16, boxShadow: "0 18px 60px rgba(0,0,0,0.35)" };

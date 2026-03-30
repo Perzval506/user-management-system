@@ -599,7 +599,7 @@ export default function AdminMenu() {
 const modalBackdrop = {
   position: "fixed",
   inset: 0,
-  background: "rgba(0,0,0,0.55)",
+  background: "rgba(15, 23, 42, 0.24)",
   display: "grid",
   placeItems: "center",
   padding: 12,
@@ -607,12 +607,12 @@ const modalBackdrop = {
 };
 
 const modalWideCard = {
-  width: "min(980px, 100%)",
+  width: "min(980px, calc(100vw - 32px))",
   background: "white",
   borderRadius: 14,
-  padding: 16,
+  padding: 18,
   boxShadow: "0 18px 60px rgba(0,0,0,0.35)",
-  maxHeight: "90vh",
+  height: "min(920px, 60vh)",
   overflowY: "auto",
 };
 const sectionTabStyle = (active) => ({
