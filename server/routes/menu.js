@@ -1,7 +1,24 @@
 const express = require("express");
 const pool = require("../db");
 const { requireAuth } = require("../middleware/auth");
+const { getColumns } = require("../utils/dbIntrospection");
 const router = express.Router();
+
+let cachedMenuCols = null;
+async function getMenuColumns() {
+  if (cachedMenuCols) return cachedMenuCols;
+  try {
+    const [rows] = await pool.query("SHOW COLUMNS FROM menu_items");
+    cachedMenuCols = rows.reduce((acc, row) => {
+      acc[row.Field] = true;
+      return acc;
+    }, {});
+  } catch (err) {
+    console.error("Unable to inspect menu_items table:", err.message);
+    cachedMenuCols = {};
+  }
+  return cachedMenuCols;
+}
 
 async function createRecipeAndVersion(conn, {
   recipeName,
@@ -46,8 +63,10 @@ router.get("/", async (req, res) => {
 
 // Create menu item variant + recipe + recipe_version + initial price_history
 router.post("/", async (req, res) => {
-  const { menu_name, description, status, selling_price, recipe_name, recipe_description } = req.body;
+  const { menu_name, description, status, selling_price, recipe_name, recipe_description, target_food_cost_percent } = req.body;
   if (!menu_name) return res.status(400).json({ error: 'menu_name is required' });
+  const cols = await getMenuColumns();
+  const hasTargetCost = !!cols.target_food_cost_percent;
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -58,9 +77,22 @@ router.post("/", async (req, res) => {
     });
 
     // create menu item linked to this recipe_version
+    const fields = ["menu_name", "description", "recipe_version_id"];
+    const placeholders = ["?", "?", "?"];
+    const values = [menu_name, description || null, recipeVersionId];
+    if (hasTargetCost) {
+      fields.push("target_food_cost_percent");
+      placeholders.push("?");
+      const tfcp = parseFloat(target_food_cost_percent);
+      values.push(Number.isFinite(tfcp) ? tfcp : null);
+    }
+    fields.push("status");
+    placeholders.push("?");
+    values.push(status || "ACTIVE");
+
     const [rMenu] = await conn.query(
-      'INSERT INTO menu_items (menu_name, description, recipe_version_id, status) VALUES (?,?,?,?)',
-      [menu_name, description || null, recipeVersionId, status || 'ACTIVE']
+      `INSERT INTO menu_items (${fields.join(",")}) VALUES (${placeholders.join(",")})`,
+      values
     );
     const menuItemId = rMenu.insertId;
 
@@ -86,11 +118,21 @@ router.post("/", async (req, res) => {
 // Update basic menu item fields (keep recipe link intact)
 router.put("/:id", async (req, res) => {
   const { id } = req.params;
-  const { menu_name, description, status } = req.body;
+  const { menu_name, description, status, target_food_cost_percent } = req.body;
   try {
+    const cols = await getMenuColumns();
+    const hasTargetCost = !!cols.target_food_cost_percent;
+    const updates = ["menu_name=?", "description=?", "status=?"];
+    const vals = [menu_name, description || null, status || "ACTIVE"];
+    if (hasTargetCost) {
+      updates.splice(2, 0, "target_food_cost_percent=?");
+      const tfcp = parseFloat(target_food_cost_percent);
+      vals.splice(2, 0, Number.isFinite(tfcp) ? tfcp : null);
+    }
+
     await pool.query(
-      'UPDATE menu_items SET menu_name=?, description=?, status=? WHERE id=?',
-      [menu_name, description || null, status || 'ACTIVE', id]
+      `UPDATE menu_items SET ${updates.join(", ")} WHERE id=?`,
+      [...vals, id]
     );
     res.json({ ok: true });
   } catch (err) {
@@ -139,13 +181,25 @@ router.get("/:id/recipe", async (req, res) => {
     if (!recipeVersionId) return res.json({ recipe_version: null, ingredients: [] });
 
     const [[rv]] = await pool.query('SELECT * FROM recipe_versions WHERE id=?', [recipeVersionId]);
-    const [ings] = await pool.query(
-      `SELECT ri.*, i.ingredient_name, i.base_unit
-       FROM recipe_ingredients ri
-       JOIN ingredients i ON i.id = ri.ingredient_id
-       WHERE ri.recipe_version_id = ?`,
-      [recipeVersionId]
-    );
+    let ings = [];
+    try {
+      [ings] = await pool.query(
+        `SELECT ri.*, i.ingredient_name, i.base_unit, i.current_ap_cost
+         FROM recipe_ingredients ri
+         JOIN ingredients i ON i.id = ri.ingredient_id
+         WHERE ri.recipe_version_id = ?`,
+        [recipeVersionId]
+      );
+    } catch (err) {
+      // fallback if current_ap_cost column does not exist
+      [ings] = await pool.query(
+        `SELECT ri.*, i.ingredient_name, i.base_unit
+         FROM recipe_ingredients ri
+         JOIN ingredients i ON i.id = ri.ingredient_id
+         WHERE ri.recipe_version_id = ?`,
+        [recipeVersionId]
+      );
+    }
     res.json({ recipe_version: rv, ingredients: ings });
   } catch (err) {
     console.error(err);
@@ -185,13 +239,16 @@ router.put("/:id/recipe", requireAuth, async (req, res) => {
       await conn.query('UPDATE menu_items SET recipe_version_id=? WHERE id=?', [recipeVersionId, id]);
     }
 
-    // Optionally update recipe_versions fields
+    const recipeVersionCols = await getColumns("recipe_versions");
+    const recipeIngredientCols = await getColumns("recipe_ingredients");
+
+    // Optionally update recipe_versions fields, but only for columns that exist
     if (recipe_version && typeof recipe_version === 'object') {
       const fields = ['yield_amount','yield_unit','portion_size','portion_unit','is_active'];
       const updates = [];
       const vals = [];
       fields.forEach(f => {
-        if (Object.prototype.hasOwnProperty.call(recipe_version, f)) {
+        if (recipeVersionCols[f] && Object.prototype.hasOwnProperty.call(recipe_version, f)) {
           updates.push(`${f}=?`);
           vals.push(recipe_version[f]);
         }
@@ -231,16 +288,27 @@ router.put("/:id/recipe", requireAuth, async (req, res) => {
     // Delete existing lines and insert new ones
     await conn.query('DELETE FROM recipe_ingredients WHERE recipe_version_id = ?', [recipeVersionId]);
     if (ingredients.length) {
-      // New persistence: recipe line pricing is now stored instead of staying draft-only in the browser.
-      const insertSql = 'INSERT INTO recipe_ingredients (recipe_version_id, ingredient_id, qty_used, qty_unit, price, yield_percent) VALUES ?';
-      const rows = ingredients.map(i => [
-        recipeVersionId,
-        i.ingredient_id,
-        i.qty_used,
-        i.qty_unit,
-        i.price === "" || i.price === null || typeof i.price === "undefined" ? null : Number(i.price),
-        i.yield_percent || null,
-      ]);
+      // Support older schemas that may not have price/yield_percent yet.
+      const insertColumns = ["recipe_version_id", "ingredient_id", "qty_used", "qty_unit"];
+      if (recipeIngredientCols.price) insertColumns.push("price");
+      if (recipeIngredientCols.yield_percent) insertColumns.push("yield_percent");
+
+      const rows = ingredients.map((i) => {
+        const row = [
+          recipeVersionId,
+          i.ingredient_id,
+          i.qty_used,
+          i.qty_unit,
+        ];
+        if (recipeIngredientCols.price) {
+          row.push(i.price === "" || i.price === null || typeof i.price === "undefined" ? null : Number(i.price));
+        }
+        if (recipeIngredientCols.yield_percent) {
+          row.push(i.yield_percent === "" || i.yield_percent === null || typeof i.yield_percent === "undefined" ? null : Number(i.yield_percent));
+        }
+        return row;
+      });
+      const insertSql = `INSERT INTO recipe_ingredients (${insertColumns.join(", ")}) VALUES ?`;
       await conn.query(insertSql, [rows]);
     }
 
@@ -248,8 +316,8 @@ router.put("/:id/recipe", requireAuth, async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     await conn.rollback();
-    console.error(err);
-    res.status(500).json({ error: 'Failed to update recipe' });
+    console.error("PUT /menu/:id/recipe failed:", err.message);
+    res.status(500).json({ error: err.message || 'Failed to update recipe' });
   } finally {
     conn.release();
   }

@@ -188,8 +188,7 @@ export default function PurchaseOrders() {
     dispatch({ type: "remove", key });
   }
 
-  async function onSubmit(event) {
-    event.preventDefault();
+  async function submitPurchaseOrder() {
     if (!storeName.trim()) return toast.push({ type: "error", title: "Missing store", message: "Store name is required." });
     if (items.length === 0) return toast.push({ type: "error", title: "Missing items", message: "Add at least one item." });
 
@@ -248,6 +247,11 @@ export default function PurchaseOrders() {
     } finally {
       setSaving(false);
     }
+  }
+
+  function onSubmit(event) {
+    event.preventDefault();
+    submitPurchaseOrder();
   }
 
   async function openDetails(id) {
@@ -340,7 +344,7 @@ export default function PurchaseOrders() {
             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
               <strong>Total:</strong>
               <span className="mono">{formatMoney(totalAmount)}</span>
-              <button className="btn btn-primary" type="submit" disabled={saving}>{saving ? "Saving..." : "Save purchase order"}</button>
+              <button className="btn btn-primary" type="button" disabled={saving} onClick={submitPurchaseOrder}>{saving ? "Saving..." : "Save purchase order"}</button>
             </div>
           </div>
         </form>
@@ -441,7 +445,7 @@ const modalBackdrop = {
   display: "grid",
   placeItems: "center",
   padding: 12,
-  zIndex: 9999,
+  zIndex: 200000,
 };
 
 const modalWideCard = {

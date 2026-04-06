@@ -25,7 +25,7 @@ export function ToastProvider({ children }) {
       createdAt: Date.now(),
       read: false,
     };
-    setToasts((p) => [toast, ...p]);
+    setToasts((p) => [toast, ...p].slice(0, 3)); // keep UI unblocked by limiting concurrent toasts
     setHistory((prev) => [toast, ...prev].slice(0, 40));
 
     window.setTimeout(() => {
@@ -63,44 +63,9 @@ export function ToastProvider({ children }) {
   return (
     <ToastCtx.Provider value={api}>
       {children}
-      <div className="toastViewport" aria-live="polite">
-        {bannerToasts.map((t) => (
-          <div key={t.id} className={`toast toast-${t.type}`}>
-            <div className="toastBody">
-              {t.title ? <div className="toastTitle">{t.title}</div> : null}
-              <div className="toastMsg">{t.message}</div>
-            </div>
-            <button className="toastCloseBtn" onClick={() => remove(t.id)} aria-label="Dismiss notification">
-              ✕
-            </button>
-          </div>
-        ))}
-      </div>
-
-      {activeCritical && (
-        <div
-          className="criticalToastBackdrop"
-          role="alertdialog"
-          aria-live="assertive"
-          aria-modal="true"
-          onClick={() => remove(activeCritical.id)}
-        >
-          <div className={`criticalToast criticalToast-${activeCritical.type}`} onClick={(e) => e.stopPropagation()}>
-            <div className="criticalToastTitle">{activeCritical.title || "Notice"}</div>
-            <div className="criticalToastMsg">{activeCritical.message}</div>
-            {criticalToasts.length > 1 && (
-              <div className="criticalToastQueue">
-                {criticalToasts.length - 1} more alert{criticalToasts.length - 1 > 1 ? "s" : ""} pending
-              </div>
-            )}
-            <div className="criticalToastActions">
-              <button className="btn btn-primary" onClick={() => remove(activeCritical.id)}>
-                Dismiss
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Temporarily hide toast UI to guarantee no overlays block clicks */}
+      <div className="toastViewport" aria-live="polite" style={{ display: "none" }} />
+      {null}
     </ToastCtx.Provider>
   );
 }

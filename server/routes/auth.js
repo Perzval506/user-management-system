@@ -37,10 +37,16 @@ router.post("/login", async (req, res) => {
       { expiresIn: "2h" }
     );
 
-    await pool.execute(
-      "UPDATE users SET last_login_at = NOW() WHERE id = ?",
-      [user.id]
-    );
+    // Update last_login_at if the column exists. Some databases may not
+    // have this column yet (older schemas) — don't fail the login for that.
+    try {
+      await pool.execute(
+        "UPDATE users SET last_login_at = NOW() WHERE id = ?",
+        [user.id]
+      );
+    } catch (e) {
+      console.warn("warning: failed to update last_login_at:", e.message);
+    }
 
     res.json({
       token,

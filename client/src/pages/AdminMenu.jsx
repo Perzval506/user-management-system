@@ -10,6 +10,7 @@ const emptyForm = {
   status: "ACTIVE",
   price: "",
   size: "",
+  target_food_cost_percent: 0.3,
 };
 
 const MANAGE_SECTIONS = {
@@ -85,6 +86,7 @@ export default function AdminMenu() {
       status: row.status ?? "ACTIVE",
       price: "",
       size: "",
+      target_food_cost_percent: row.target_food_cost_percent ?? 0.3,
     });
     setRecipeCreateForm({
       recipe_name: row.menu_name || "",
@@ -104,12 +106,14 @@ export default function AdminMenu() {
   }
 
   function onChange(event) {
-    setForm((previous) => ({ ...previous, [event.target.name]: event.target.value }));
+    const { name, value } = event.target;
+    setForm((previous) => ({
+      ...previous,
+      [name]: name === "target_food_cost_percent" ? value : value,
+    }));
   }
 
-  async function onSubmit(event) {
-    event.preventDefault();
-
+  async function submitMenuItem() {
     if (!form.menu_name.trim()) {
       toast.push({
         type: "error",
@@ -131,6 +135,10 @@ export default function AdminMenu() {
           description: form.description.trim() || null,
           status: form.status || "ACTIVE",
         };
+        const tfcp = parseFloat(form.target_food_cost_percent);
+        if (Number.isFinite(tfcp)) {
+          payload.target_food_cost_percent = tfcp;
+        }
 
         if (form.price !== undefined && form.price !== null && form.price !== "") {
           const parsedPrice = parseFloat(form.price);
@@ -152,10 +160,12 @@ export default function AdminMenu() {
           message: "Menu item created.",
         });
       } else {
+        const tfcp = parseFloat(form.target_food_cost_percent);
         await api.put(`/menu/${editingItem.id}`, {
           menu_name: form.menu_name.trim(),
           description: form.description.trim() || null,
           status: form.status || "ACTIVE",
+          target_food_cost_percent: Number.isFinite(tfcp) ? tfcp : null,
         });
         toast.push({
           type: "success",
@@ -174,6 +184,11 @@ export default function AdminMenu() {
           error?.response?.data?.message || error.message || "Save failed",
       });
     }
+  }
+
+  function onSubmit(event) {
+    event.preventDefault();
+    submitMenuItem();
   }
 
   async function deactivate(row) {
@@ -251,8 +266,44 @@ export default function AdminMenu() {
     }
   }
 
-  async function handleCreateRecipe(event) {
-    event.preventDefault();
+  async function saveTargetPercent() {
+    if (!editingItem) return;
+    const tfcp = parseFloat(form.target_food_cost_percent);
+    if (!Number.isFinite(tfcp) || tfcp <= 0) {
+      toast.push({
+        type: "error",
+        title: "Invalid target",
+        message: "Enter a decimal like 0.30 for 30%.",
+      });
+      return;
+    }
+
+    try {
+      await api.put(`/menu/${editingItem.id}`, {
+        menu_name: editingItem.menu_name,
+        description: editingItem.description || null,
+        status: editingItem.status || "ACTIVE",
+        target_food_cost_percent: tfcp,
+      });
+      toast.push({
+        type: "success",
+        title: "Updated",
+        message: "Target food cost saved.",
+      });
+      await load();
+      setEditingItem((current) =>
+        current ? { ...current, target_food_cost_percent: tfcp } : current
+      );
+    } catch (error) {
+      toast.push({
+        type: "error",
+        title: "Update failed",
+        message: error?.response?.data?.message || "Target save failed",
+      });
+    }
+  }
+
+  async function handleCreateRecipe() {
     if (!editingItem) return;
 
     try {
@@ -276,6 +327,27 @@ export default function AdminMenu() {
         title: "Create recipe failed",
         message:
           error?.response?.data?.message || "Failed to create recipe",
+      });
+    }
+  }
+
+  async function quickCreateRecipe(row) {
+    try {
+      await api.post(`/menu/${row.id}/create-recipe`, {
+        recipe_name: row.menu_name,
+        recipe_description: row.description || null,
+      });
+      toast.push({
+        type: "success",
+        title: "Recipe created",
+        message: `Linked recipe to ${row.menu_name}.`,
+      });
+      await load();
+    } catch (error) {
+      toast.push({
+        type: "error",
+        title: "Create recipe failed",
+        message: error?.response?.data?.message || "Failed to create recipe",
       });
     }
   }
@@ -367,6 +439,11 @@ export default function AdminMenu() {
                         >
                           Manage
                         </button>
+                        {!row.recipe_version_id && (
+                          <button className="btn" onClick={() => quickCreateRecipe(row)}>
+                            Create recipe
+                          </button>
+                        )}
 
                         {row.status === "INACTIVE" ? (
                           <button className="btn" onClick={() => activate(row)}>
@@ -495,11 +572,29 @@ export default function AdminMenu() {
                   </select>
                 </div>
 
+                <div>
+                  <label>
+                    Target food cost (decimal)
+                    <span style={{ color: "#6B7280", fontWeight: 400 }}> — e.g., 0.30 = 30%</span>
+                  </label>
+                  <input
+                    name="target_food_cost_percent"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="1"
+                    value={form.target_food_cost_percent}
+                    onChange={onChange}
+                    className="input"
+                    placeholder="0.30"
+                  />
+                </div>
+
                 <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
                   <button type="button" className="btn btn-ghost" onClick={closeModal}>
                     Cancel
                   </button>
-                  <button type="submit" className="btn btn-primary">
+                  <button type="button" className="btn btn-primary" onClick={submitMenuItem}>
                     {mode === "create" ? "Create" : "Save Details"}
                   </button>
                 </div>
@@ -526,6 +621,32 @@ export default function AdminMenu() {
                   />
                 </div>
 
+                <div>
+                  <label>
+                    Target food cost (decimal)
+                    <span style={{ color: "#6B7280", fontWeight: 400 }}> — 0.30 = 30%</span>
+                  </label>
+                  <div className="formRow2" style={{ alignItems: "center", gap: 8 }}>
+                    <input
+                      className="input"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="1"
+                      name="target_food_cost_percent"
+                      value={form.target_food_cost_percent}
+                      onChange={onChange}
+                      placeholder="0.30"
+                    />
+                    <button className="btn" type="button" onClick={saveTargetPercent}>
+                      Save target %
+                    </button>
+                  </div>
+                  <div style={{ color: "#6B7280", marginTop: 6, fontSize: 12 }}>
+                    Used for suggested pricing and profitability.
+                  </div>
+                </div>
+
                 <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
                   <button className="btn btn-ghost" onClick={closeModal}>
                     Close
@@ -546,7 +667,10 @@ export default function AdminMenu() {
                     <p style={{ marginTop: 0, opacity: 0.8 }}>
                       Create a recipe to start managing ingredient lines for this menu item.
                     </p>
-                    <form className="formGrid" onSubmit={handleCreateRecipe}>
+                    <form className="formGrid" onSubmit={(event) => {
+                      event.preventDefault();
+                      handleCreateRecipe();
+                    }}>
                       <div>
                         <label>Recipe name</label>
                         <input
@@ -573,7 +697,7 @@ export default function AdminMenu() {
                       </div>
 
                       <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-                        <button type="submit" className="btn btn-primary">
+                        <button type="button" className="btn btn-primary" onClick={handleCreateRecipe}>
                           Create Recipe
                         </button>
                       </div>
@@ -582,6 +706,18 @@ export default function AdminMenu() {
                 ) : (
                   <RecipeBuilder
                     menuId={editingId}
+                    currentSellingPrice={editingItem?.selling_price}
+                    targetFoodCostPercent={
+                      Number.isFinite(parseFloat(form.target_food_cost_percent))
+                        ? parseFloat(form.target_food_cost_percent)
+                        : 0.3
+                    }
+                    onTargetChange={(next) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        target_food_cost_percent: next,
+                      }))
+                    }
                     onClose={async () => {
                       await load();
                     }}
@@ -603,7 +739,8 @@ const modalBackdrop = {
   display: "grid",
   placeItems: "center",
   padding: 12,
-  zIndex: 9999,
+  zIndex: 200000, // above toasts and other overlays
+  pointerEvents: "auto",
 };
 
 const modalWideCard = {

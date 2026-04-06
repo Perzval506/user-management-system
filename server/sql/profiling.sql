@@ -144,6 +144,7 @@ CREATE TABLE IF NOT EXISTS recipe_ingredients (
   ingredient_id INT NOT NULL,
   qty_used DECIMAL(12,3) NOT NULL,
   qty_unit VARCHAR(20) NOT NULL,
+  -- Optional costing fields used by recipe profitability calculations.
   price DECIMAL(12,2) NULL,
   yield_percent DECIMAL(5,2) NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -161,6 +162,8 @@ CREATE TABLE IF NOT EXISTS menu_items (
   menu_name VARCHAR(140) NOT NULL,
   description TEXT NULL,
   recipe_version_id INT NULL,
+  -- Stored as a decimal ratio, e.g. 0.3000 = 30% target food cost.
+  target_food_cost_percent DECIMAL(6,4) NULL,
   status ENUM('ACTIVE','INACTIVE') NOT NULL DEFAULT 'ACTIVE',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

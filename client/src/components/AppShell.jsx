@@ -333,11 +333,13 @@ export default function AppShell() {
       <ToastViewport />
 
       <div className={`shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+        {/* Scrim disabled to avoid blocking clicks; sidebar toggled via button */}
         <button
           type="button"
-          className={`sidebarScrim ${sidebarCollapsed ? "" : "show"}`}
-          onClick={() => setSidebarCollapsed(true)}
-          aria-label="Close main menu"
+          className="sidebarScrim"
+          aria-label="Sidebar scrim disabled"
+          tabIndex={-1}
+          style={{ pointerEvents: "none" }}
         />
 
         <aside className="sidebar">

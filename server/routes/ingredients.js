@@ -2,7 +2,7 @@ const express = require("express");
 const pool = require("../db");
 const router = express.Router();
 const ALLOWED_UNITS = require("../utils/units");
-const { tableExists } = require("../utils/dbIntrospection");
+const { tableExists, columnExists } = require("../utils/dbIntrospection");
 
 let cachedCols = null;
 async function getIngredientColumns() {
@@ -26,6 +26,12 @@ function baseQtyColumn(cols) {
   return "base_unit_qty";
 }
 
+const currentApCostColumn = async () => {
+  const cols = await getIngredientColumns();
+  if (cols.current_ap_cost) return "current_ap_cost";
+  return null;
+};
+
 router.get("/", async (req, res) => {
   try {
     const cols = await getIngredientColumns();
@@ -41,6 +47,7 @@ router.get("/", async (req, res) => {
       "created_at",
     ];
     if (cols.quantity) select.splice(5, 0, "quantity");
+    if (cols.current_ap_cost) select.splice(6, 0, "current_ap_cost");
     if (cols.last_updated) select.push("last_updated");
 
     const search = (req.query.q || "").trim();
@@ -114,6 +121,7 @@ router.get("/", async (req, res) => {
         ...r,
         quantity: r.quantity ?? 0,
         lastUpdated: r.last_updated || r.updated_at || r.created_at,
+        current_ap_cost: typeof r.current_ap_cost !== "undefined" ? r.current_ap_cost : suggestedUnitCost ?? null,
         suggested_unit_cost: suggestedUnitCost,
         suggested_cost_unit: purchaseOrderCost?.unit || r.base_unit || null,
         suggested_brand: purchaseOrderCost?.brand || null,

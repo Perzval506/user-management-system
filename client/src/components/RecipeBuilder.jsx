@@ -5,6 +5,7 @@ import ConfirmModal from "./ConfirmModal";
 import MultiSelectDropdown from "./MultiSelectDropdown";
 import { useToast } from "./Toast";
 import { formatMoney, formatNumber } from "../utils/formatters";
+import { computeMenuItemCosting } from "../utils/costing";
 
 const makeLocalLineId = () =>
   globalThis.crypto?.randomUUID?.() ||
@@ -144,7 +145,13 @@ const RecipeLineRow = React.memo(function RecipeLineRow({
   );
 });
 
-export default function RecipeBuilder({ menuId, onClose }) {
+export default function RecipeBuilder({
+  menuId,
+  onClose,
+  currentSellingPrice = 0,
+  targetFoodCostPercent = 0.3,
+  onTargetChange,
+}) {
   const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -186,6 +193,39 @@ export default function RecipeBuilder({ menuId, onClose }) {
     }
     return yieldAmount / portionSize;
   }, [recipeVersion]);
+
+  const costingSummary = useMemo(() => {
+    const yieldAmount = Number(recipeVersion?.yield_amount);
+    const portionSize = Number(recipeVersion?.portion_size);
+
+    const ingredientsForCost = lines.map((line) => {
+      const ingredient = ingredientsOpt.find((i) => i.id === line.ingredient_id);
+      const qtyUsed = Number(line.qty_used) || 0;
+      const baseCost =
+        line.price !== "" && line.price !== null && isFinite(Number(line.price))
+          ? Number(line.price)
+          : Number(ingredient?.current_ap_cost ?? ingredient?.suggested_unit_cost ?? 0) || 0;
+      const yieldPercentRaw =
+        line.yield_percent === "" || line.yield_percent === null
+          ? 100
+          : Number(line.yield_percent);
+
+      return {
+        quantity_used: qtyUsed,
+        unit: line.qty_unit,
+        ap_cost_per_unit: isFinite(baseCost) ? baseCost : 0,
+        yield_percent: isFinite(yieldPercentRaw) ? yieldPercentRaw : 100,
+      };
+    });
+
+    return computeMenuItemCosting({
+      ingredients: ingredientsForCost,
+      total_yield_grams: isFinite(yieldAmount) ? yieldAmount : 0,
+      portion_size_grams: isFinite(portionSize) ? portionSize : 0,
+      target_food_cost_percent: Number(targetFoodCostPercent) || 0,
+      current_selling_price: Number(currentSellingPrice) || 0,
+    });
+  }, [lines, ingredientsOpt, recipeVersion, targetFoodCostPercent, currentSellingPrice]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -532,6 +572,18 @@ export default function RecipeBuilder({ menuId, onClose }) {
                 <div style={{ color: "#6B7280", marginBottom: 4 }}>Estimated ingredient cost</div>
                 <div style={{ fontWeight: 800, fontSize: 22 }}>{formatMoney(totalCost)}</div>
             </div>
+            <div className="card" style={{ background: "#f8fafc" }}>
+              <div style={{ color: "#6B7280", marginBottom: 4 }}>Cost per portion</div>
+              <div style={{ fontWeight: 800, fontSize: 22 }}>
+                {formatMoney(costingSummary?.cost_per_portion || 0)}
+              </div>
+            </div>
+            <div className="card" style={{ background: "#f8fafc" }}>
+              <div style={{ color: "#6B7280", marginBottom: 4 }}>Suggested price</div>
+              <div style={{ fontWeight: 800, fontSize: 22 }}>
+                {formatMoney(costingSummary?.suggested_price || 0)}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -613,6 +665,93 @@ export default function RecipeBuilder({ menuId, onClose }) {
         </div>
       </div>
 
+      <div className="card" style={{ padding: 12, marginTop: 12 }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <div>
+            <div style={{ color: "#6B7280", fontSize: 12, textTransform: "uppercase" }}>Costing status</div>
+            <div style={{ fontWeight: 800, fontSize: 18, display: "flex", alignItems: "center", gap: 8 }}>
+              <span
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: 999,
+                  background:
+                    costingSummary?.status === "PROFIT"
+                      ? "#E8F5E9"
+                      : costingSummary?.status === "LOSS"
+                        ? "#FEF2F2"
+                        : "#F3F4F6",
+                  color:
+                    costingSummary?.status === "PROFIT"
+                      ? "#166534"
+                      : costingSummary?.status === "LOSS"
+                        ? "#991B1B"
+                        : "#374151",
+                }}
+              >
+                {costingSummary?.status || "N/A"}
+              </span>
+              <span style={{ color: "#6B7280", fontWeight: 500 }}>{costingSummary?.comment}</span>
+            </div>
+          </div>
+          <div style={{ marginLeft: "auto", minWidth: 220 }}>
+            <label style={{ display: "block" }}>
+              Target food cost (decimal)
+              <span style={{ color: "#6B7280" }}> — 0.30 = 30%</span>
+            </label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              max="1"
+              className="input"
+              value={targetFoodCostPercent ?? ""}
+              onChange={(e) => onTargetChange && onTargetChange(e.target.value)}
+            />
+            <div style={{ color: "#6B7280", fontSize: 12, marginTop: 4 }}>
+              Saved via Pricing &gt; Save target %.
+            </div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            gap: 12,
+            marginTop: 14,
+          }}
+        >
+          <CostCell label="Batch cost" value={formatMoney(costingSummary?.batch_cost || 0)} />
+          <CostCell
+            label="Cost per portion"
+            value={formatMoney(costingSummary?.cost_per_portion || 0)}
+          />
+          <CostCell
+            label="Suggested price"
+            value={formatMoney(costingSummary?.suggested_price || 0)}
+            helper="Based on target food cost"
+          />
+          <CostCell
+            label="Current price"
+            value={formatMoney(currentSellingPrice || 0)}
+            helper="From latest price history"
+          />
+          <CostCell
+            label="Profit per portion"
+            value={formatMoney(costingSummary?.profit_per_portion || 0)}
+            helper={`Food cost: ${formatNumber(costingSummary?.actual_food_cost_percent * 100 || 0)}%`}
+          />
+          <CostCell
+            label="Portions per batch"
+            value={
+              costingSummary?.number_of_portions != null
+                ? formatNumber(costingSummary.number_of_portions)
+                : "-"
+            }
+          />
+        </div>
+      </div>
+
       <ConfirmModal
         open={showDiscardConfirm}
         title="Discard changes?"
@@ -620,6 +759,16 @@ export default function RecipeBuilder({ menuId, onClose }) {
         onConfirm={discardDraft}
         onCancel={() => setShowDiscardConfirm(false)}
       />
+    </div>
+  );
+}
+
+function CostCell({ label, value, helper }) {
+  return (
+    <div className="card" style={{ background: "#f8fafc" }}>
+      <div style={{ color: "#6B7280", marginBottom: 4 }}>{label}</div>
+      <div style={{ fontWeight: 800, fontSize: 22 }}>{value}</div>
+      {helper && <div style={{ color: "#6B7280", fontSize: 12, marginTop: 4 }}>{helper}</div>}
     </div>
   );
 }

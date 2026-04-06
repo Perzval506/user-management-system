@@ -38,8 +38,7 @@ export default function Purchases() {
     setForm((previous) => ({ ...previous, [event.target.name]: event.target.value }));
   }
 
-  async function onSubmit(event) {
-    event.preventDefault();
+  async function submitPurchase() {
     if (!form.ingredientName.trim()) return toast.push({ type: "error", title: "Missing field", message: "Ingredient is required." });
     const qty = Number(form.quantity);
     const price = Number(form.price);
@@ -65,6 +64,11 @@ export default function Purchases() {
     } finally {
       setSaving(false);
     }
+  }
+
+  function onSubmit(event) {
+    event.preventDefault();
+    submitPurchase();
   }
 
   return (
@@ -128,7 +132,7 @@ export default function Purchases() {
           </div>
 
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-            <button type="submit" className="btn btn-primary" disabled={saving}>
+            <button type="button" className="btn btn-primary" disabled={saving} onClick={submitPurchase}>
               {saving ? "Saving..." : "Save purchase"}
             </button>
           </div>

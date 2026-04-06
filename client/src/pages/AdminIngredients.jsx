@@ -111,9 +111,7 @@ export default function AdminIngredients() {
     setForm((previous) => ({ ...previous, [event.target.name]: event.target.value }));
   }
 
-  async function onSubmit(event) {
-    event.preventDefault();
-
+  async function submitForm() {
     if (!form.ingredient_name.trim()) {
       return toast.push({ type: "error", title: "Missing field", message: "Ingredient name is required." });
     }
@@ -170,6 +168,11 @@ export default function AdminIngredients() {
         message: error?.response?.data?.message || error.message || "Save failed",
       });
     }
+  }
+
+  function onSubmit(event) {
+    event.preventDefault();
+    submitForm();
   }
 
   async function deactivate(row) {
@@ -367,7 +370,7 @@ export default function AdminIngredients() {
 
               <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
                 <button type="button" className="btn btn-ghost" onClick={closeModal}>Cancel</button>
-                <button type="submit" className="btn btn-primary">{mode === "create" ? "Create" : "Save"}</button>
+                <button type="button" className="btn btn-primary" onClick={submitForm}>{mode === "create" ? "Create" : "Save"}</button>
               </div>
             </form>
           </div>
@@ -377,5 +380,5 @@ export default function AdminIngredients() {
   );
 }
 
-const modalBackdrop = { position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.24)", display: "grid", placeItems: "center", padding: 12, zIndex: 9999 };
+const modalBackdrop = { position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.24)", display: "grid", placeItems: "center", padding: 12, zIndex: 200000 };
 const modalCard = { width: "min(720px, 100%)", background: "white", borderRadius: 14, padding: 16, boxShadow: "0 18px 60px rgba(0,0,0,0.35)" };

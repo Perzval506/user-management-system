@@ -37,11 +37,12 @@
 }
 
 .sidebarScrim{
-  display: none;
+  display: none !important;
   border: 0;
   padding: 0;
   margin: 0;
   background: transparent;
+  pointer-events: none !important;
 }
 
 .shell.sidebar-collapsed{
@@ -499,6 +500,7 @@
   display: grid;
   justify-items: end;
   gap: 10px;
+  pointer-events: none;
 }
 
 .quickFabBtn{
@@ -513,6 +515,7 @@
   display: grid;
   place-items: center;
   transition: transform 180ms ease, box-shadow 180ms ease;
+  pointer-events: auto;
 }
 
 .quickFabBtn:hover{
@@ -1064,8 +1067,9 @@
   display: grid;
   place-items: center;
   padding: 12px;
-  z-index: 99999;
+  z-index: 120000;
   background: rgba(15, 23, 42, 0.24);
+  pointer-events: auto;
 }
 
 .modalCard{
@@ -1356,27 +1360,16 @@ input[type="checkbox"]{
   position: fixed;
   right: 16px;
   top: 16px;
-  display: grid;
+  display: none; /* fully hidden to avoid click interference */
   gap: 10px;
-  z-index: 99999;
+  z-index: 8000;
   width: min(390px, calc(100vw - 32px));
   justify-items: end;
-  pointer-events: none;
+  pointer-events: none !important;
 }
 
 .toast{
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-left: 6px solid var(--primary);
-  border-radius: 14px;
-  box-shadow: var(--shadow);
-  padding: 12px;
-  display: flex;
-  gap: 10px;
-  align-items: start;
-  animation: toastIn 220ms ease both;
-  width: 100%;
-  pointer-events: auto;
+  display: none;
 }
 
 .toastBody{
@@ -1403,9 +1396,8 @@ input[type="checkbox"]{
   height: 28px;
   background: transparent;
   color: var(--muted);
-  cursor: pointer;
-  display: grid;
-  place-items: center;
+  cursor: default;
+  display: none;
 }
 
 .toastCloseBtn:hover{
@@ -1419,15 +1411,20 @@ input[type="checkbox"]{
 .toast-warning{ border-left-color: #f59e0b; }
 
 .criticalToastBackdrop{
-  position: fixed;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  z-index: 100000;
-  background: rgba(17, 24, 39, 0.34);
-  backdrop-filter: blur(3px);
-  padding: 18px;
-  animation: fadeIn 180ms ease both;
+  display: none;
+}
+
+.criticalToast{
+  display: none;
+}
+
+/* Safety: never let overlays block clicks */
+.sidebarScrim{
+  pointer-events: none !important;
+}
+.toastViewport,
+.criticalToastBackdrop{
+  display: none !important;
 }
 
 .criticalToast{
@@ -1535,22 +1532,22 @@ input[type="checkbox"]{
     pointer-events: none;
   }
 
-  .sidebarScrim{
-    position: fixed;
-    inset: 0;
-    z-index: 30;
-    background: rgba(17, 24, 39, 0.35);
-    backdrop-filter: blur(2px);
-    opacity: 0;
-    pointer-events: none;
-    display: block;
-    transition: opacity 180ms ease;
-  }
+.sidebarScrim{
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: rgba(17, 24, 39, 0.35);
+  backdrop-filter: blur(2px);
+  opacity: 0;
+  pointer-events: none !important;
+  display: none !important; /* disable scrim to avoid blocking UI */
+  transition: opacity 180ms ease;
+}
 
-  .sidebarScrim.show{
-    opacity: 1;
-    pointer-events: auto;
-  }
+.sidebarScrim.show{
+  opacity: 0;
+  pointer-events: none;
+}
 
   .content{
     max-width: 100%;
