@@ -2,6 +2,9 @@ const express = require("express");
 const pool = require("../db");
 const router = express.Router();
 const { getColumns, tableExists } = require("../utils/dbIntrospection");
+const { requireAuth, requireAnyRole } = require("../middleware/auth");
+
+router.use(requireAuth, requireAnyRole(["OWNER", "STOCKROOM_STAFF"]));
 
 // Inventory summary: base quantity + purchases (optional future: minus usage)
 router.get("/summary", async (_req, res) => {

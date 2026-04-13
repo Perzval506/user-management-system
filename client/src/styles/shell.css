@@ -19,6 +19,23 @@
   --font: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
 }
 
+html[data-theme="dark"]{
+  --bg: #161b22;
+  --surface: #1f2630;
+  --surface2: #2a3340;
+  --border: #3b4758;
+  --text: #e5e7eb;
+  --muted: #9ca3af;
+  --primarySoft: rgba(209, 122, 45, 0.20);
+  --shadow: 0 16px 36px rgba(0, 0, 0, 0.28);
+  --shadowStrong: 0 26px 60px rgba(0, 0, 0, 0.34);
+  --ringSoft: 0 0 0 4px rgba(209, 122, 45, 0.22);
+}
+
+html[data-font-size="small"]{ font-size: 14px; }
+html[data-font-size="medium"]{ font-size: 16px; }
+html[data-font-size="large"]{ font-size: 18px; }
+
 .shell{
   min-height: 100vh;
   display: grid;
@@ -50,7 +67,7 @@
 }
 
 .sidebar{
-  background: #f2f4f7;
+  background: var(--surface);
   border-right: 1px solid var(--border);
   padding: 18px 14px;
   position: sticky;
@@ -1354,6 +1371,51 @@ input[type="checkbox"]{
   background: #ffffff;
   border-color: #d8ddeb;
   color: #374151;
+}
+
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .tableWrap{
+  background: var(--surface);
+}
+
+html[data-theme="dark"] .tableTopBar{
+  background: linear-gradient(180deg, #26303c, #222b36);
+}
+
+html[data-theme="dark"] .table tbody tr:nth-child(even) td{
+  background: rgba(255, 255, 255, 0.02);
+}
+
+html[data-theme="dark"] .btn{
+  background: linear-gradient(180deg, #2c3643, #232c37);
+  border-color: #445164;
+  color: var(--text);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
+}
+
+html[data-theme="dark"] .btn-ghost{
+  background: #26303c;
+  border-color: #445164;
+  color: var(--text);
+}
+
+html[data-theme="dark"] .btn-primary{
+  background: linear-gradient(180deg, #e8a76b, #d17a2d);
+  color: #111827;
+}
+
+html[data-theme="dark"] .input.input-select{
+  border-color: var(--border);
+  background-color: var(--surface);
+}
+
+html[data-theme="dark"] .tableFilterBar{
+  background: rgba(255, 255, 255, 0.03);
+}
+
+html[data-theme="dark"] .toggleText,
+html[data-theme="dark"] .menuInlineToolTitle{
+  color: var(--text);
 }
 
 .toastViewport{

@@ -4,6 +4,7 @@ import "../styles/shell.css";
 import boydsLogo from "../assets/boyds-logo.png";
 import { ToastProvider, ToastViewport, useToast } from "./Toast";
 import { getQuickActions, getQuickActionSelection, quickActionEvents } from "../utils/quickActions";
+import { applyUiPreferences, getFontSizePreference, getThemePreference } from "../utils/preferences";
 
 const SIDEBAR_PREF_KEY = "ums.sidebar.collapsed";
 
@@ -50,6 +51,19 @@ const Icons = {
   menu: (
     <svg viewBox="0 0 24 24" fill="none">
       <path d="M6 7h12M6 12h12M6 17h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  ),
+  sales: (
+    <svg viewBox="0 0 24 24" fill="none">
+      <path d="M5 18h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M7 15V9M12 15V6M17 15v-3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  ),
+  purchasing: (
+    <svg viewBox="0 0 24 24" fill="none">
+      <path d="M5 6h2l1.3 7.2A2 2 0 0 0 10.3 15h6.9a2 2 0 0 0 2-1.6L20 8H8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="11" cy="18.2" r="1.2" fill="currentColor" />
+      <circle cx="17" cy="18.2" r="1.2" fill="currentColor" />
     </svg>
   ),
   audit: (
@@ -262,7 +276,6 @@ export default function AppShell() {
   const name = user?.full_name || user?.name || user?.fullName || user?.username || "User";
 
   const [openItems, setOpenItems] = useState(false);
-  const [openMenuDrop, setOpenMenuDrop] = useState(false);
   const [openPurchasingDrop, setOpenPurchasingDrop] = useState(false);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -273,19 +286,16 @@ export default function AppShell() {
     }
   });
   const itemsRef = useRef(null);
-  const menuRef = useRef(null);
   const purchasingRef = useRef(null);
 
   useEffect(() => {
     function onDoc(event) {
       const insideItems = itemsRef.current && itemsRef.current.contains(event.target);
-      const insideMenu = menuRef.current && menuRef.current.contains(event.target);
       const insidePurchasing =
         purchasingRef.current && purchasingRef.current.contains(event.target);
 
-      if (!insideItems && !insideMenu && !insidePurchasing) {
+      if (!insideItems && !insidePurchasing) {
         setOpenItems(false);
-        setOpenMenuDrop(false);
         setOpenPurchasingDrop(false);
       }
     }
@@ -301,6 +311,13 @@ export default function AppShell() {
       /* ignore */
     }
   }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    applyUiPreferences({
+      theme: getThemePreference(),
+      fontSize: getFontSizePreference(),
+    });
+  }, []);
 
   const onLogout = () => {
     setLogoutConfirmOpen(false);
@@ -412,7 +429,7 @@ export default function AppShell() {
                       setOpenPurchasingDrop((value) => !value);
                     }}
                   >
-                    <span className="ico">{Icons.box}</span>
+                    <span className="ico">{Icons.purchasing}</span>
                     <span className="navGrow">Purchasing</span>
                     <span className={`chev ${openPurchasingDrop ? "up" : ""}`}>v</span>
                   </button>
@@ -432,31 +449,13 @@ export default function AppShell() {
                   )}
                 </div>
 
-                <div ref={menuRef} className="navGroup">
-                  <button
-                    type="button"
-                    className={`navLink navBtn ${isActiveGroup("/admin/menu") ? "active" : ""}`}
-                    onClick={() => {
-                      setOpenMenuDrop((value) => !value);
-                    }}
-                  >
-                    <span className="ico">{Icons.menu}</span>
-                    <span className="navGrow">Menu</span>
-                    <span className={`chev ${openMenuDrop ? "up" : ""}`}>v</span>
-                  </button>
-
-                  {openMenuDrop && (
-                    <div className="dropdown open">
-                      {/* New consolidation: menu work now starts from one management entry point. */}
-                      <button
-                        className="dropdownItem"
-                        onClick={() => navigate("/admin/menu/manage")}
-                      >
-                        Manage Menu Items
-                      </button>
-                    </div>
-                  )}
-                </div>
+                <NavLink
+                  to="/admin/menu/manage"
+                  className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}
+                >
+                  <span className="ico">{Icons.menu}</span>
+                  <span>Menu</span>
+                </NavLink>
 
                 <NavLink to="/audit" className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}>
                   <span className="ico">{Icons.audit}</span>
@@ -467,7 +466,7 @@ export default function AppShell() {
                   to="/admin/sales"
                   className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}
                 >
-                  <span className="ico">{Icons.menu}</span>
+                  <span className="ico">{Icons.sales}</span>
                   <span>Sales</span>
                 </NavLink>
 

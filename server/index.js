@@ -15,6 +15,8 @@ const metaRoutes = require("./routes/meta");
 const purchaseRoutes = require("./routes/purchases");
 const purchaseOrderRoutes = require("./routes/purchaseOrders");
 const inventoryRoutes = require("./routes/inventory");
+const salesRoutes = require("./routes/sales");
+const auditLogRoutes = require("./routes/auditLogs");
 
 const app = express();
 
@@ -49,6 +51,8 @@ app.use("/api/meta", metaRoutes);
 app.use("/api/purchases", purchaseRoutes);
 app.use("/api/purchase-orders", purchaseOrderRoutes);
 app.use("/api/inventory", inventoryRoutes);
+app.use("/api/sales", salesRoutes);
+app.use("/api/audit-logs", auditLogRoutes);
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

@@ -40,6 +40,9 @@ export default function OwnerDashboard() {
     menu: [],
     purchases: [],
     purchaseOrders: [],
+    salesSummary: { totalRevenue: 0, totalTransactions: 0, todayRevenue: 0 },
+    purchaseWeeklyTotal: 0,
+    purchaseOrderWeeklyTotal: 0,
   });
 
   const load = useCallback(async () => {
@@ -52,6 +55,8 @@ export default function OwnerDashboard() {
         menuResponse,
         purchasesResponse,
         purchaseOrdersResponse,
+        salesResponse,
+        purchaseOrderWeeklyResponse,
       ] = await Promise.all([
         api.get("/users"),
         api.get("/ingredients"),
@@ -59,15 +64,43 @@ export default function OwnerDashboard() {
         api.get("/menu"),
         api.get("/purchases"),
         api.get("/purchase-orders"),
+        api.get("/sales"),
+        api.get("/purchase-orders/summary/weekly"),
       ]);
+
+      const menuItems = menuResponse.data || [];
+      const recipeChecks = await Promise.all(
+        menuItems.map(async (item) => {
+          if (!item.recipe_version_id) {
+            return { menuId: item.id, hasRecipeLines: false };
+          }
+          try {
+            const recipeRes = await api.get(`/menu/${item.id}/recipe`);
+            const hasRecipeLines = Array.isArray(recipeRes.data?.ingredients) && recipeRes.data.ingredients.length > 0;
+            return { menuId: item.id, hasRecipeLines };
+          } catch {
+            return { menuId: item.id, hasRecipeLines: false };
+          }
+        })
+      );
+      const recipeCheckMap = recipeChecks.reduce((acc, row) => {
+        acc[row.menuId] = row.hasRecipeLines;
+        return acc;
+      }, {});
 
       setDashboard({
         users: usersResponse.data || [],
         ingredients: ingredientsResponse.data || [],
         inventory: inventoryResponse.data || [],
-        menu: menuResponse.data || [],
+        menu: menuItems.map((item) => ({
+          ...item,
+          has_recipe_lines: Boolean(recipeCheckMap[item.id]),
+        })),
         purchases: purchasesResponse.data?.items || [],
         purchaseOrders: purchaseOrdersResponse.data || [],
+        salesSummary: salesResponse.data?.summary || { totalRevenue: 0, totalTransactions: 0, todayRevenue: 0 },
+        purchaseWeeklyTotal: Number(purchasesResponse.data?.weeklyTotal || 0),
+        purchaseOrderWeeklyTotal: Number(purchaseOrderWeeklyResponse.data?.weeklyTotal || 0),
       });
     } catch (error) {
       toast.push({
@@ -112,16 +145,12 @@ export default function OwnerDashboard() {
     [dashboard.inventory]
   );
   const menuWithoutRecipe = useMemo(
-    () => dashboard.menu.filter((item) => !item.recipe_version_id).slice(0, 5),
+    () => dashboard.menu.filter((item) => !item.recipe_version_id || !item.has_recipe_lines).slice(0, 5),
     [dashboard.menu]
   );
-  const totalQuickPurchases = useMemo(
-    () => dashboard.purchases.reduce((sum, item) => sum + Number(item.price || 0), 0),
-    [dashboard.purchases]
-  );
-  const totalPurchaseOrders = useMemo(
-    () => dashboard.purchaseOrders.reduce((sum, order) => sum + Number(order.total_amount || 0), 0),
-    [dashboard.purchaseOrders]
+  const weeklyPurchasingTotal = useMemo(
+    () => Number(dashboard.purchaseWeeklyTotal || 0) + Number(dashboard.purchaseOrderWeeklyTotal || 0),
+    [dashboard.purchaseOrderWeeklyTotal, dashboard.purchaseWeeklyTotal]
   );
   const recentPurchases = useMemo(() => dashboard.purchases.slice(0, 5), [dashboard.purchases]);
   const recentPurchaseOrders = useMemo(() => dashboard.purchaseOrders.slice(0, 5), [dashboard.purchaseOrders]);
@@ -169,8 +198,12 @@ export default function OwnerDashboard() {
           <div style={{ fontSize: 26, fontWeight: 800 }}>{menuWithoutRecipe.length}</div>
         </div>
         <div className="card">
-          <div style={{ color: "#6B7280", marginBottom: 4 }}>Recent purchasing total</div>
-          <div style={{ fontSize: 26, fontWeight: 800 }}>{formatMoney(totalQuickPurchases + totalPurchaseOrders)}</div>
+          <div style={{ color: "#6B7280", marginBottom: 4 }}>Weekly purchasing total</div>
+          <div style={{ fontSize: 26, fontWeight: 800 }}>{formatMoney(weeklyPurchasingTotal)}</div>
+        </div>
+        <div className="card">
+          <div style={{ color: "#6B7280", marginBottom: 4 }}>Total revenue</div>
+          <div style={{ fontSize: 26, fontWeight: 800 }}>{formatMoney(dashboard.salesSummary.totalRevenue)}</div>
         </div>
       </div>
 
@@ -217,7 +250,9 @@ export default function OwnerDashboard() {
             <div key={item.id} style={listRow}>
               <div>
                 <div style={{ fontWeight: 800 }}>{item.menu_name}</div>
-                <div style={{ color: "#6B7280", fontSize: 13 }}>No recipe linked yet</div>
+                <div style={{ color: "#6B7280", fontSize: 13 }}>
+                  {!item.recipe_version_id ? "No recipe linked yet" : "Recipe linked but still missing ingredient lines"}
+                </div>
               </div>
               <span className="badge badge-inactive">Needs setup</span>
             </div>

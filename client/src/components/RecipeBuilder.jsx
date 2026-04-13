@@ -212,8 +212,10 @@ export default function RecipeBuilder({
 
       return {
         quantity_used: qtyUsed,
-        unit: line.qty_unit,
+        quantity_unit: line.qty_unit,
+        base_unit: ingredient?.base_unit || line.qty_unit,
         ap_cost_per_unit: isFinite(baseCost) ? baseCost : 0,
+        uses_manual_unit_cost: line.price !== "" && line.price !== null && isFinite(Number(line.price)),
         yield_percent: isFinite(yieldPercentRaw) ? yieldPercentRaw : 100,
       };
     });
@@ -675,15 +677,23 @@ export default function RecipeBuilder({
                   padding: "4px 10px",
                   borderRadius: 999,
                   background:
-                    costingSummary?.status === "PROFIT"
-                      ? "#E8F5E9"
-                      : costingSummary?.status === "LOSS"
+                    costingSummary?.status === "High Profit"
+                      ? "#DCFCE7"
+                      : costingSummary?.status === "Moderate Profit"
+                        ? "#E8F5E9"
+                        : costingSummary?.status === "Low Profit"
+                          ? "#FEF3C7"
+                          : costingSummary?.status === "Loss"
                         ? "#FEF2F2"
                         : "#F3F4F6",
                   color:
-                    costingSummary?.status === "PROFIT"
+                    costingSummary?.status === "High Profit"
                       ? "#166534"
-                      : costingSummary?.status === "LOSS"
+                      : costingSummary?.status === "Moderate Profit"
+                      ? "#166534"
+                      : costingSummary?.status === "Low Profit"
+                        ? "#92400E"
+                      : costingSummary?.status === "Loss"
                         ? "#991B1B"
                         : "#374151",
                 }}
@@ -692,6 +702,11 @@ export default function RecipeBuilder({
               </span>
               <span style={{ color: "#6B7280", fontWeight: 500 }}>{costingSummary?.comment}</span>
             </div>
+            {costingSummary?.has_unit_mismatch ? (
+              <div style={{ color: "#b45309", fontSize: 13, marginTop: 6 }}>
+                Some recipe line units do not match their ingredient base units, so the costing result needs review.
+              </div>
+            ) : null}
           </div>
           <div style={{ marginLeft: "auto", minWidth: 220 }}>
             <label style={{ display: "block" }}>
@@ -739,7 +754,7 @@ export default function RecipeBuilder({
           <CostCell
             label="Profit per portion"
             value={formatMoney(costingSummary?.profit_per_portion || 0)}
-            helper={`Food cost: ${formatNumber(costingSummary?.actual_food_cost_percent * 100 || 0)}%`}
+            helper={`Margin: ${formatNumber(costingSummary?.profit_margin * 100 || 0)}% | Food cost: ${formatNumber(costingSummary?.actual_food_cost_percent * 100 || 0)}%`}
           />
           <CostCell
             label="Portions per batch"

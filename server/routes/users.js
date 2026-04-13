@@ -2,6 +2,7 @@ const express = require("express");
 const bcrypt = require("bcrypt");
 const pool = require("../db");
 const { requireAuth, requireRole } = require("../middleware/auth");
+const { buildActor, writeAuditLog } = require("../utils/auditLog");
 
 const router = express.Router();
 const ALLOWED_ROLES = ["OWNER", "CASHIER", "STOCKROOM_STAFF"];
@@ -12,7 +13,10 @@ router.use(requireAuth, requireRole("OWNER"));
 // GET /api/users
 router.get("/", async (req, res) => {
   const [rows] = await pool.execute(
-    "SELECT id, full_name, username, role, status, created_at, updated_at FROM users ORDER BY id DESC"
+    `SELECT u.id, u.full_name, u.username, u.role, u.status, u.created_at, u.updated_at, up.avatar_url
+       FROM users u
+       LEFT JOIN user_profiles up ON up.user_id = u.id
+      ORDER BY u.id DESC`
   );
   res.json(rows);
 });
@@ -47,6 +51,18 @@ router.post("/", async (req, res) => {
           [result.insertId, String(avatar_url).trim()]
         );
       }
+
+      await writeAuditLog(
+        {
+          ...buildActor(req),
+          module_name: "STAFF",
+          action_name: "CREATE",
+          entity_type: "user",
+          entity_id: result.insertId,
+          summary: `Created staff account for ${full_name}.`,
+        },
+        conn
+      );
 
       await conn.commit();
       res.status(201).json({ id: result.insertId, message: "User created" });
@@ -87,6 +103,15 @@ router.put("/:id", async (req, res) => {
     );
   }
 
+  await writeAuditLog({
+    ...buildActor(req),
+    module_name: "STAFF",
+    action_name: "UPDATE",
+    entity_type: "user",
+    entity_id: Number(id),
+    summary: `Updated staff account for ${full_name}.`,
+  });
+
   res.json({ message: "User updated" });
 });
 
@@ -99,6 +124,14 @@ router.patch("/:id/status", async (req, res) => {
     return res.status(400).json({ message: "status must be ACTIVE or INACTIVE" });
 
   await pool.execute("UPDATE users SET status=? WHERE id=?", [status, id]);
+  await writeAuditLog({
+    ...buildActor(req),
+    module_name: "STAFF",
+    action_name: status === "ACTIVE" ? "ACTIVATE" : "DEACTIVATE",
+    entity_type: "user",
+    entity_id: Number(id),
+    summary: `${status === "ACTIVE" ? "Activated" : "Deactivated"} staff user #${id}.`,
+  });
   res.json({ message: "Status updated" });
 });
 

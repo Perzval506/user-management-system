@@ -4,7 +4,7 @@ import api from "../services/api";
 import useUnits from "../hooks/useUnits";
 import { useToast } from "../components/Toast";
 import ToDoNext from "../components/ToDoNext";
-import { formatDateTimeFriendly, formatNumber } from "../utils/formatters";
+import { formatDateLong, formatDateTimeFriendly, formatMoney, formatNumber } from "../utils/formatters";
 
 const emptyForm = {
   ingredient_name: "",
@@ -27,6 +27,9 @@ export default function AdminIngredients() {
   const [mode, setMode] = useState("create");
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyData, setHistoryData] = useState({ ingredient: null, history: [] });
 
   const units = useUnits();
 
@@ -210,6 +213,25 @@ export default function AdminIngredients() {
     }
   }
 
+  async function openHistory(row) {
+    setHistoryOpen(true);
+    setHistoryLoading(true);
+    setHistoryData({ ingredient: null, history: [] });
+    try {
+      const res = await api.get(`/ingredients/${row.id}/history`);
+      setHistoryData(res.data || { ingredient: row, history: [] });
+    } catch (error) {
+      toast.push({
+        type: "error",
+        title: "Load failed",
+        message: error?.response?.data?.message || error.message || "Failed to load ingredient history",
+      });
+      setHistoryOpen(false);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
   return (
     <div className="page">
       <div className="pageHeader">
@@ -293,6 +315,7 @@ export default function AdminIngredients() {
                     <td>
                       <div className="rowActions">
                         <button className="btn" onClick={() => openEdit(row)}>Manage</button>
+                        <button className="btn btn-ghost" onClick={() => openHistory(row)}>View History</button>
                         {row.status === "INACTIVE" ? (
                           <button className="btn" onClick={() => activate(row)}>Activate</button>
                         ) : (
@@ -373,6 +396,59 @@ export default function AdminIngredients() {
                 <button type="button" className="btn btn-primary" onClick={submitForm}>{mode === "create" ? "Create" : "Save"}</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {historyOpen && (
+        <div style={modalBackdrop} onClick={() => setHistoryOpen(false)}>
+          <div style={modalCard} onClick={(event) => event.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 12 }}>
+              <div>
+                <h3 style={{ margin: 0 }}>Ingredient History</h3>
+                {historyData.ingredient && (
+                  <div style={{ color: "#6B7280", marginTop: 4 }}>
+                    {historyData.ingredient.ingredient_name} | Current stock: {formatNumber(historyData.ingredient.quantity || 0)} {historyData.ingredient.base_unit || ""}
+                  </div>
+                )}
+              </div>
+              <button className="btn btn-ghost" onClick={() => setHistoryOpen(false)}>Close</button>
+            </div>
+
+            {historyLoading ? (
+              <div style={{ padding: 12 }}>Loading history...</div>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Source</th>
+                      <th>Brand</th>
+                      <th>Unit</th>
+                      <th className="text-right">Quantity</th>
+                      <th className="text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {historyData.history.map((entry) => (
+                      <tr key={`${entry.source_type}-${entry.id}`}>
+                        <td>{formatDateLong(entry.activity_date)}</td>
+                        <td>{entry.source_type === "PURCHASE_ORDER" ? "Purchase Order" : "Purchase"}</td>
+                        <td>{entry.brand || "-"}</td>
+                        <td>{entry.unit || historyData.ingredient?.base_unit || "-"}</td>
+                        <td className="text-right mono">{formatNumber(entry.quantity || 0)}</td>
+                        <td className="text-right mono">{formatMoney(entry.amount || 0)}</td>
+                      </tr>
+                    ))}
+                    {historyData.history.length === 0 && (
+                      <tr>
+                        <td colSpan="6" style={{ padding: 12, opacity: 0.7 }}>No purchase history found for this ingredient yet.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}

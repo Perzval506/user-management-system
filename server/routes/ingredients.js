@@ -1,8 +1,12 @@
 const express = require("express");
 const pool = require("../db");
 const router = express.Router();
+const { requireAuth, requireAnyRole } = require("../middleware/auth");
 const ALLOWED_UNITS = require("../utils/units");
 const { tableExists, columnExists } = require("../utils/dbIntrospection");
+const { buildActor, writeAuditLog } = require("../utils/auditLog");
+
+router.use(requireAuth, requireAnyRole(["OWNER", "STOCKROOM_STAFF"]));
 
 let cachedCols = null;
 async function getIngredientColumns() {
@@ -136,6 +140,64 @@ router.get("/", async (req, res) => {
   }
 });
 
+router.get("/:id/history", async (req, res) => {
+  const ingredientId = Number(req.params.id);
+  if (!Number.isFinite(ingredientId) || ingredientId <= 0) {
+    return res.status(400).json({ message: "Invalid ingredient id." });
+  }
+
+  try {
+    const [[ingredient]] = await pool.query(
+      "SELECT id, ingredient_name, base_unit, quantity, status, updated_at, last_updated FROM ingredients WHERE id=?",
+      [ingredientId]
+    );
+    if (!ingredient) return res.status(404).json({ message: "Ingredient not found." });
+
+    const [purchaseRows] = (await tableExists("purchases"))
+      ? await pool.query(
+          `SELECT id, 'PURCHASE' AS source_type, created_at AS activity_date, quantity, price AS amount, NULL AS brand, NULL AS unit
+             FROM purchases
+            WHERE LOWER(TRIM(ingredient_name)) = LOWER(TRIM(?))
+            ORDER BY created_at DESC, id DESC`,
+          [ingredient.ingredient_name]
+        )
+      : [[]];
+
+    const [poRows] = (await tableExists("purchase_order_details")) && (await tableExists("purchase_orders"))
+      ? await pool.query(
+          `SELECT pod.id,
+                  'PURCHASE_ORDER' AS source_type,
+                  po.purchase_date AS activity_date,
+                  pod.quantity,
+                  pod.subtotal AS amount,
+                  pod.brand,
+                  pod.unit
+             FROM purchase_order_details pod
+             JOIN purchase_orders po ON po.id = pod.purchase_order_id
+            WHERE pod.ingredient_id = ?
+               OR LOWER(TRIM(COALESCE(pod.ingredient_name, ''))) = LOWER(TRIM(?))
+            ORDER BY po.purchase_date DESC, pod.id DESC`,
+          [ingredientId, ingredient.ingredient_name]
+        )
+      : [[]];
+
+    const history = [...purchaseRows, ...poRows].sort(
+      (a, b) => new Date(b.activity_date).getTime() - new Date(a.activity_date).getTime()
+    );
+
+    res.json({
+      ingredient: {
+        ...ingredient,
+        ingredient_name: String(ingredient.ingredient_name || "").toUpperCase(),
+      },
+      history,
+    });
+  } catch (err) {
+    console.error("GET /ingredients/:id/history failed:", err.message);
+    res.status(500).json({ message: "Failed to fetch ingredient history" });
+  }
+});
+
 router.post("/", async (req, res) => {
   const { ingredient_name, category, base_unit, base_unit_qty, status, quantity } = req.body;
   const bu = (base_unit || "").toString().trim().toLowerCase();
@@ -178,6 +240,17 @@ router.post("/", async (req, res) => {
       if (lastCol) updates.push(`${lastCol}=NOW()`);
 
       await conn.query(`UPDATE ingredients SET ${updates.join(", ")} WHERE id=?`, [...vals, existing[0].id]);
+      await writeAuditLog(
+        {
+          ...buildActor(req),
+          module_name: "INGREDIENTS",
+          action_name: "UPDATE",
+          entity_type: "ingredient",
+          entity_id: existing[0].id,
+          summary: `Updated ingredient ${ingredient_name}.`,
+        },
+        conn
+      );
       await conn.commit();
       return res.json({ id: existing[0].id, quantity: nextQty, updated: true });
     }
@@ -195,7 +268,18 @@ router.post("/", async (req, res) => {
       placeholders.push("NOW()");
     }
 
-    await conn.query(`INSERT INTO ingredients (${fields.join(",")}) VALUES (${placeholders.join(",")})`, vals);
+    const [created] = await conn.query(`INSERT INTO ingredients (${fields.join(",")}) VALUES (${placeholders.join(",")})`, vals);
+    await writeAuditLog(
+      {
+        ...buildActor(req),
+        module_name: "INGREDIENTS",
+        action_name: "CREATE",
+        entity_type: "ingredient",
+        entity_id: created.insertId,
+        summary: `Created ingredient ${ingredient_name}.`,
+      },
+      conn
+    );
     await conn.commit();
     res.status(201).json({ created: true });
   } catch (err) {
@@ -240,6 +324,14 @@ router.put("/:id", async (req, res) => {
 
   try {
     await pool.query(`UPDATE ingredients SET ${updates.join(", ")} WHERE id=?`, [...vals, id]);
+    await writeAuditLog({
+      ...buildActor(req),
+      module_name: "INGREDIENTS",
+      action_name: "UPDATE",
+      entity_type: "ingredient",
+      entity_id: Number(id),
+      summary: `Updated ingredient ${ingredient_name}.`,
+    });
     res.json({ ok: true });
   } catch (err) {
     console.error("PUT /ingredients failed:", err.message);
@@ -250,6 +342,14 @@ router.put("/:id", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   const { id } = req.params;
   await pool.query("UPDATE ingredients SET status='INACTIVE' WHERE id=?", [id]);
+  await writeAuditLog({
+    ...buildActor(req),
+    module_name: "INGREDIENTS",
+    action_name: "DEACTIVATE",
+    entity_type: "ingredient",
+    entity_id: Number(id),
+    summary: `Set ingredient #${id} to INACTIVE.`,
+  });
   res.json({ ok: true });
 });
 

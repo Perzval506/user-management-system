@@ -6,6 +6,13 @@ const pool = require("../db");
 const { requireAuth, requireRole } = require("../middleware/auth");
 
 const router = express.Router();
+const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
+const SIGNATURES = {
+  "image/png": "89504e47",
+  "image/jpeg": "ffd8ff",
+  "image/webp": "52494646",
+  "image/gif": "47494638",
+};
 
 router.use(requireAuth);
 
@@ -13,12 +20,15 @@ router.post(
   "/avatar-upload",
   express.raw({ type: ["image/png", "image/jpeg", "image/webp", "image/gif"], limit: "5mb" }),
   async (req, res) => {
-    try {
-      if (!req.body || !req.body.length) {
-        return res.status(400).json({ message: "Image file is required" });
-      }
+      try {
+        if (!req.body || !req.body.length) {
+          return res.status(400).json({ message: "Image file is required" });
+        }
+        if (req.body.length > MAX_AVATAR_BYTES) {
+          return res.status(400).json({ message: "Image is too large. Maximum size is 5 MB." });
+        }
 
-      const contentType = String(req.headers["content-type"] || "").toLowerCase();
+        const contentType = String(req.headers["content-type"] || "").toLowerCase();
       const extension =
         contentType === "image/png" ? ".png" :
         contentType === "image/jpeg" ? ".jpg" :
@@ -26,16 +36,26 @@ router.post(
         contentType === "image/gif" ? ".gif" :
         null;
 
-      if (!extension) {
-        return res.status(400).json({ message: "Unsupported image type" });
-      }
+        if (!extension) {
+          return res.status(400).json({ message: "Unsupported image type" });
+        }
 
-      const uploadsDir = path.join(__dirname, "..", "uploads", "avatars");
-      fs.mkdirSync(uploadsDir, { recursive: true });
+        const fileHex = Buffer.from(req.body).subarray(0, 16).toString("hex");
+        const expectedSignature = SIGNATURES[contentType];
+        if (contentType === "image/webp") {
+          if (!fileHex.startsWith(expectedSignature)) {
+            return res.status(400).json({ message: "Uploaded file content does not match WEBP format." });
+          }
+        } else if (!fileHex.startsWith(expectedSignature)) {
+          return res.status(400).json({ message: "Uploaded file content does not match the selected image type." });
+        }
 
-      const fileName = `${Date.now()}-${crypto.randomUUID()}${extension}`;
-      const filePath = path.join(uploadsDir, fileName);
-      fs.writeFileSync(filePath, req.body);
+        const uploadsDir = path.join(__dirname, "..", "uploads", "avatars");
+        fs.mkdirSync(uploadsDir, { recursive: true });
+
+        const fileName = `${Date.now()}-${crypto.randomUUID()}${extension}`;
+        const filePath = path.join(uploadsDir, fileName);
+        await fs.promises.writeFile(filePath, req.body);
 
       const avatarUrl = `${req.protocol}://${req.get("host")}/uploads/avatars/${fileName}`;
       res.status(201).json({ avatar_url: avatarUrl });

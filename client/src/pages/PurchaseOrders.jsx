@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import api from "../services/api";
+import ConfirmModal from "../components/ConfirmModal";
 import { useToast } from "../components/Toast";
-import { formatDateLong, formatMoney, round2, formatDateTimeFriendly } from "../utils/formatters";
+import { formatDateLong, formatMoney, round2, formatDateTimeFriendly, formatNumber } from "../utils/formatters";
 
 const todayInput = () => new Date().toISOString().slice(0, 10);
 
@@ -104,7 +105,7 @@ const ItemRow = React.memo(function ItemRow({ row, onChange, onRemove, ingredien
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => applyIngredient(ingredient)}
                   >
-                    <strong>{ingredient.ingredient_name}</strong>
+                    <strong>{String(ingredient.ingredient_name || "").toUpperCase()}</strong>
                     <span style={{ color: "#6B7280" }}>{ingredient.base_unit || "-"}</span>
                   </button>
                 ))
@@ -141,6 +142,9 @@ export default function PurchaseOrders() {
   const [detailOrder, setDetailOrder] = useState(null);
   const [detailItems, setDetailItems] = useState([]);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [weeklyHistory, setWeeklyHistory] = useState([]);
+  const [weeklyTotal, setWeeklyTotal] = useState(0);
+  const [deletingOrder, setDeletingOrder] = useState(null);
 
   const totalAmount = useMemo(
     () => round2(items.reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.price || 0), 0)),
@@ -159,8 +163,13 @@ export default function PurchaseOrders() {
 
   const loadOrders = useCallback(async () => {
     try {
-      const res = await api.get("/purchase-orders");
-      setOrders(res.data || []);
+      const [ordersResponse, weeklyResponse] = await Promise.all([
+        api.get("/purchase-orders"),
+        api.get("/purchase-orders/summary/weekly"),
+      ]);
+      setOrders(ordersResponse.data || []);
+      setWeeklyHistory(weeklyResponse.data?.weeklyHistory || []);
+      setWeeklyTotal(Number(weeklyResponse.data?.weeklyTotal || 0));
     } catch (error) {
       toast.push({ type: "error", title: "Load failed", message: error?.response?.data?.message || error.message });
     }
@@ -271,6 +280,21 @@ export default function PurchaseOrders() {
     }
   }
 
+  async function confirmDeleteOrder() {
+    if (!deletingOrder) return;
+    try {
+      await api.delete(`/purchase-orders/${deletingOrder.id}`);
+      toast.push({ type: "success", title: "Deleted", message: "Purchase order deleted." });
+      setDeletingOrder(null);
+      if (detailOrder?.id === deletingOrder.id) {
+        setDetailOpen(false);
+      }
+      await loadOrders();
+    } catch (error) {
+      toast.push({ type: "error", title: "Delete failed", message: error?.response?.data?.message || error.message });
+    }
+  }
+
   return (
     <div className="page">
       <div className="pageHeader">
@@ -278,7 +302,7 @@ export default function PurchaseOrders() {
           <h2 className="pageTitle">Purchase Orders</h2>
           <div className="pageSub">Record supplier receipts with quantities, unit prices, and item-level totals.</div>
         </div>
-        <div className="badge mono">Total: {formatMoney(totalAmount)}</div>
+        <div className="badge mono">This week: {formatMoney(weeklyTotal)}</div>
       </div>
 
       <div className="card">
@@ -289,9 +313,9 @@ export default function PurchaseOrders() {
               marginBottom: 14,
               padding: 12,
               borderRadius: 12,
-              background: "#f8fafc",
-              border: "1px solid rgba(15,23,42,0.08)",
-              color: "#475569",
+              background: "var(--surface2)",
+              border: "1px solid var(--border)",
+              color: "var(--muted)",
               lineHeight: 1.5,
             }}
           >
@@ -372,11 +396,43 @@ export default function PurchaseOrders() {
                   <td>{order.item_count || 0}</td>
                   <td className="text-right mono">{formatMoney(order.total_amount)}</td>
                   <td>{formatDateTimeFriendly(order.created_at)}</td>
-                  <td><button className="btn btn-ghost" onClick={() => openDetails(order.id)}>View</button></td>
+                  <td>
+                    <div className="rowActions">
+                      <button className="btn btn-ghost" onClick={() => openDetails(order.id)}>View</button>
+                      <button className="btn btn-ghost" onClick={() => setDeletingOrder(order)}>Delete</button>
+                    </div>
+                  </td>
                 </tr>
               ))}
               {orders.length === 0 && (
                 <tr><td colSpan="6" style={{ padding: 12, opacity: 0.7 }}>No purchase orders yet.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="tableWrap" style={{ marginTop: 14 }}>
+        <div className="tableTopBar">Weekly Spending History</div>
+        <div style={{ overflowX: "auto" }}>
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Week starting</th>
+                <th className="text-right">Orders</th>
+                <th className="text-right">Total spent</th>
+              </tr>
+            </thead>
+            <tbody>
+              {weeklyHistory.map((row) => (
+                <tr key={row.week_start}>
+                  <td>{formatDateLong(row.week_start)}</td>
+                  <td className="text-right mono">{formatNumber(row.order_count || 0, 0)}</td>
+                  <td className="text-right mono">{formatMoney(row.total_spent || 0)}</td>
+                </tr>
+              ))}
+              {weeklyHistory.length === 0 && (
+                <tr><td colSpan="3" style={{ padding: 12, opacity: 0.7 }}>Weekly purchase-order history will appear here once records exist.</td></tr>
               )}
             </tbody>
           </table>
@@ -416,7 +472,7 @@ export default function PurchaseOrders() {
                   <tbody>
                     {detailItems.map((item) => (
                       <tr key={item.id}>
-                        <td>{item.ingredient_name || "-"}</td>
+                        <td>{item.ingredient_name ? String(item.ingredient_name).toUpperCase() : "-"}</td>
                         <td>{item.brand || "-"}</td>
                         <td>{item.unit || "-"}</td>
                         <td className="text-right mono">{round2(item.quantity || 0).toFixed(2)}</td>
@@ -434,6 +490,15 @@ export default function PurchaseOrders() {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        open={Boolean(deletingOrder)}
+        title="Delete purchase order?"
+        message={deletingOrder ? `Delete the purchase order from ${deletingOrder.store_name}?` : ""}
+        confirmLabel="Delete Order"
+        onCancel={() => setDeletingOrder(null)}
+        onConfirm={confirmDeleteOrder}
+      />
     </div>
   );
 }
@@ -450,7 +515,7 @@ const modalBackdrop = {
 
 const modalWideCard = {
   width: "min(920px, 100%)",
-  background: "white",
+  background: "var(--surface)",
   borderRadius: 14,
   padding: 16,
   boxShadow: "0 18px 60px rgba(0,0,0,0.35)",
@@ -462,8 +527,8 @@ const suggestionBox = {
   left: 0,
   right: 0,
   top: "calc(100% + 6px)",
-  background: "#FFFFFF",
-  border: "1px solid #E7EAF3",
+  background: "var(--surface)",
+  border: "1px solid var(--border)",
   borderRadius: 12,
   boxShadow: "0 18px 40px rgba(15,23,42,0.10)",
   overflow: "hidden",
@@ -472,8 +537,8 @@ const suggestionBox = {
 const suggestionItem = {
   width: "100%",
   border: 0,
-  borderBottom: "1px solid #F1F5F9",
-  background: "#FFFFFF",
+  borderBottom: "1px solid var(--border)",
+  background: "var(--surface)",
   padding: 10,
   textAlign: "left",
   cursor: "pointer",

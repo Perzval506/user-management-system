@@ -1,8 +1,64 @@
 const express = require("express");
 const pool = require("../db");
-const { requireAuth } = require("../middleware/auth");
+const { requireAuth, requireRole } = require("../middleware/auth");
 const { getColumns } = require("../utils/dbIntrospection");
+const { buildActor, writeAuditLog } = require("../utils/auditLog");
 const router = express.Router();
+
+const MENU_STATUSES = new Set(["ACTIVE", "INACTIVE"]);
+
+function isValidDate(value) {
+  if (!value) return false;
+  const date = new Date(value);
+  return !Number.isNaN(date.getTime());
+}
+
+function normalizeOptionalText(value) {
+  const text = String(value || "").trim();
+  return text || null;
+}
+
+function validateMenuPayload(body, { requireName = true } = {}) {
+  const menuName = String(body.menu_name || "").trim();
+  const description = normalizeOptionalText(body.description);
+  const recipeName = String(body.recipe_name || "").trim();
+  const recipeDescription = normalizeOptionalText(body.recipe_description);
+  const status = String(body.status || "ACTIVE").trim().toUpperCase();
+  const result = {
+    menuName,
+    description,
+    recipeName: recipeName || null,
+    recipeDescription,
+    status,
+    targetFoodCostPercent: null,
+    sellingPrice: undefined,
+  };
+
+  if (requireName && !menuName) {
+    return { error: "menu_name is required" };
+  }
+  if (!MENU_STATUSES.has(status)) {
+    return { error: "status must be ACTIVE or INACTIVE" };
+  }
+
+  if (typeof body.target_food_cost_percent !== "undefined" && body.target_food_cost_percent !== "" && body.target_food_cost_percent !== null) {
+    const tfcp = Number(body.target_food_cost_percent);
+    if (!Number.isFinite(tfcp) || tfcp <= 0 || tfcp >= 1) {
+      return { error: "target_food_cost_percent must be greater than 0 and less than 1" };
+    }
+    result.targetFoodCostPercent = tfcp;
+  }
+
+  if (typeof body.selling_price !== "undefined") {
+    const sellingPrice = Number(body.selling_price);
+    if (!Number.isFinite(sellingPrice) || sellingPrice <= 0) {
+      return { error: "selling_price must be greater than 0" };
+    }
+    result.sellingPrice = sellingPrice;
+  }
+
+  return { value: result };
+}
 
 let cachedMenuCols = null;
 async function getMenuColumns() {
@@ -62,9 +118,18 @@ router.get("/", async (req, res) => {
 });
 
 // Create menu item variant + recipe + recipe_version + initial price_history
-router.post("/", async (req, res) => {
-  const { menu_name, description, status, selling_price, recipe_name, recipe_description, target_food_cost_percent } = req.body;
-  if (!menu_name) return res.status(400).json({ error: 'menu_name is required' });
+router.post("/", requireAuth, requireRole("OWNER"), async (req, res) => {
+  const validated = validateMenuPayload(req.body, { requireName: true });
+  if (validated.error) return res.status(400).json({ error: validated.error });
+  const {
+    menuName,
+    description,
+    status,
+    sellingPrice,
+    recipeName,
+    recipeDescription,
+    targetFoodCostPercent,
+  } = validated.value;
   const cols = await getMenuColumns();
   const hasTargetCost = !!cols.target_food_cost_percent;
   const conn = await pool.getConnection();
@@ -72,19 +137,18 @@ router.post("/", async (req, res) => {
     await conn.beginTransaction();
 
     const { recipeVersionId } = await createRecipeAndVersion(conn, {
-      recipeName: recipe_name || menu_name,
-      recipeDescription: recipe_description || null,
+      recipeName: recipeName || menuName,
+      recipeDescription,
     });
 
     // create menu item linked to this recipe_version
     const fields = ["menu_name", "description", "recipe_version_id"];
     const placeholders = ["?", "?", "?"];
-    const values = [menu_name, description || null, recipeVersionId];
+    const values = [menuName, description, recipeVersionId];
     if (hasTargetCost) {
       fields.push("target_food_cost_percent");
       placeholders.push("?");
-      const tfcp = parseFloat(target_food_cost_percent);
-      values.push(Number.isFinite(tfcp) ? tfcp : null);
+      values.push(targetFoodCostPercent);
     }
     fields.push("status");
     placeholders.push("?");
@@ -97,13 +161,24 @@ router.post("/", async (req, res) => {
     const menuItemId = rMenu.insertId;
 
     // initial price history
-    if (typeof selling_price !== 'undefined') {
+    if (typeof sellingPrice !== "undefined") {
       await conn.query(
         'INSERT INTO menu_price_history (menu_item_id, selling_price, effective_date) VALUES (?,?,?)',
-        [menuItemId, selling_price, new Date()]
+        [menuItemId, sellingPrice, new Date()]
       );
     }
 
+    await writeAuditLog(
+      {
+        ...buildActor(req),
+        module_name: "MENU",
+        action_name: "CREATE",
+        entity_type: "menu_item",
+        entity_id: menuItemId,
+        summary: `Created menu item ${menuName}.`,
+      },
+      conn
+    );
     await conn.commit();
     res.status(201).json({ id: menuItemId });
   } catch (err) {
@@ -116,24 +191,33 @@ router.post("/", async (req, res) => {
 });
 
 // Update basic menu item fields (keep recipe link intact)
-router.put("/:id", async (req, res) => {
+router.put("/:id", requireAuth, requireRole("OWNER"), async (req, res) => {
   const { id } = req.params;
-  const { menu_name, description, status, target_food_cost_percent } = req.body;
+  const validated = validateMenuPayload(req.body, { requireName: true });
+  if (validated.error) return res.status(400).json({ error: validated.error });
+  const { menuName, description, status, targetFoodCostPercent } = validated.value;
   try {
     const cols = await getMenuColumns();
     const hasTargetCost = !!cols.target_food_cost_percent;
     const updates = ["menu_name=?", "description=?", "status=?"];
-    const vals = [menu_name, description || null, status || "ACTIVE"];
+    const vals = [menuName, description, status];
     if (hasTargetCost) {
       updates.splice(2, 0, "target_food_cost_percent=?");
-      const tfcp = parseFloat(target_food_cost_percent);
-      vals.splice(2, 0, Number.isFinite(tfcp) ? tfcp : null);
+      vals.splice(2, 0, targetFoodCostPercent);
     }
 
     await pool.query(
       `UPDATE menu_items SET ${updates.join(", ")} WHERE id=?`,
       [...vals, id]
     );
+    await writeAuditLog({
+      ...buildActor(req),
+      module_name: "MENU",
+      action_name: "UPDATE",
+      entity_type: "menu_item",
+      entity_id: Number(id),
+      summary: `Updated menu item ${menuName}.`,
+    });
     res.json({ ok: true });
   } catch (err) {
     console.error(err);
@@ -142,10 +226,18 @@ router.put("/:id", async (req, res) => {
 });
 
 // Soft-delete / deactivate
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", requireAuth, requireRole("OWNER"), async (req, res) => {
   const { id } = req.params;
   try {
     await pool.query("UPDATE menu_items SET status='INACTIVE' WHERE id=?", [id]);
+    await writeAuditLog({
+      ...buildActor(req),
+      module_name: "MENU",
+      action_name: "DEACTIVATE",
+      entity_type: "menu_item",
+      entity_id: Number(id),
+      summary: `Set menu item #${id} to INACTIVE.`,
+    });
     res.json({ ok: true });
   } catch (err) {
     console.error(err);
@@ -154,16 +246,31 @@ router.delete("/:id", async (req, res) => {
 });
 
 // Add new price history row
-router.post("/:id/price", async (req, res) => {
+router.post("/:id/price", requireAuth, requireRole("OWNER"), async (req, res) => {
   const { id } = req.params;
   const { selling_price, effective_date } = req.body;
   if (typeof selling_price === 'undefined') return res.status(400).json({ error: 'selling_price is required' });
+  const sellingPrice = Number(selling_price);
+  if (!Number.isFinite(sellingPrice) || sellingPrice <= 0) {
+    return res.status(400).json({ error: "selling_price must be greater than 0" });
+  }
+  if (effective_date && !isValidDate(effective_date)) {
+    return res.status(400).json({ error: "effective_date must be a valid date" });
+  }
   try {
     const ed = effective_date ? new Date(effective_date) : new Date();
     await pool.query(
       'INSERT INTO menu_price_history (menu_item_id, selling_price, effective_date) VALUES (?,?,?)',
-      [id, selling_price, ed]
+      [id, sellingPrice, ed]
     );
+    await writeAuditLog({
+      ...buildActor(req),
+      module_name: "MENU",
+      action_name: "PRICE_UPDATE",
+      entity_type: "menu_item",
+      entity_id: Number(id),
+      summary: `Updated menu price to ${sellingPrice.toFixed(2)}.`,
+    });
     res.status(201).json({ ok: true });
   } catch (err) {
     console.error(err);
@@ -172,7 +279,7 @@ router.post("/:id/price", async (req, res) => {
 });
 
 // Get recipe version and ingredient lines for a menu item
-router.get("/:id/recipe", async (req, res) => {
+router.get("/:id/recipe", requireAuth, async (req, res) => {
   const { id } = req.params;
   try {
     const [[menu]] = await pool.query('SELECT * FROM menu_items WHERE id=?', [id]);
@@ -312,6 +419,17 @@ router.put("/:id/recipe", requireAuth, async (req, res) => {
       await conn.query(insertSql, [rows]);
     }
 
+    await writeAuditLog(
+      {
+        ...buildActor(req),
+        module_name: "MENU",
+        action_name: "RECIPE_UPDATE",
+        entity_type: "menu_item",
+        entity_id: Number(id),
+        summary: `Updated recipe lines for menu item #${id}.`,
+      },
+      conn
+    );
     await conn.commit();
     res.json({ ok: true });
   } catch (err) {
@@ -326,9 +444,13 @@ router.put("/:id/recipe", requireAuth, async (req, res) => {
 // Create a recipe + initial version and link it to the menu item
 router.post('/:id/create-recipe', requireAuth, async (req, res) => {
   const { id } = req.params;
-  const { recipe_name, recipe_description } = req.body;
+  const recipeName = String(req.body.recipe_name || "").trim();
+  const recipeDescription = normalizeOptionalText(req.body.recipe_description);
   const conn = await pool.getConnection();
   try {
+    if (req.user?.role !== "OWNER") {
+      return res.status(403).json({ error: "Forbidden" });
+    }
     await conn.beginTransaction();
 
     const [[menu]] = await conn.query('SELECT * FROM menu_items WHERE id=? FOR UPDATE', [id]);
@@ -343,14 +465,25 @@ router.post('/:id/create-recipe', requireAuth, async (req, res) => {
 
     const userId = req.user && req.user.id ? req.user.id : null;
     const { recipeId, recipeVersionId } = await createRecipeAndVersion(conn, {
-      recipeName: recipe_name || menu.menu_name,
-      recipeDescription: recipe_description || null,
+      recipeName: recipeName || menu.menu_name,
+      recipeDescription,
       userId,
     });
 
     // link menu to this recipe_version
     await conn.query('UPDATE menu_items SET recipe_version_id = ? WHERE id = ?', [recipeVersionId, id]);
 
+    await writeAuditLog(
+      {
+        ...buildActor(req),
+        module_name: "MENU",
+        action_name: "RECIPE_CREATE",
+        entity_type: "menu_item",
+        entity_id: Number(id),
+        summary: `Created recipe for menu item #${id}.`,
+      },
+      conn
+    );
     await conn.commit();
     res.status(201).json({ recipe_id: recipeId, recipe_version_id: recipeVersionId });
   } catch (err) {

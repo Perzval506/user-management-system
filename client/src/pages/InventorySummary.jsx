@@ -49,7 +49,7 @@ export default function InventorySummary() {
                 <tr>
                   <th>Name</th>
                   <th>Unit</th>
-                  <th className="text-right">Total Stock</th>
+                  <th className="text-right" style={{ width: 180 }}>Total Stock</th>
                 </tr>
               </thead>
               <tbody>
@@ -57,7 +57,7 @@ export default function InventorySummary() {
                   <tr key={row.id}>
                     <td style={{ fontWeight: 700 }}>{row.ingredient_name}</td>
                     <td>{row.base_unit || "-"}</td>
-                    <td className="text-right mono">{formatNumber(row.total_stock)}</td>
+                    <td className="text-right mono" style={{ width: 180 }}>{formatNumber(row.total_stock)}</td>
                   </tr>
                 ))}
                 {rows.length === 0 && (

@@ -1,5 +1,18 @@
 import { useMemo, useState } from "react";
-import { getQuickActions, getQuickActionSelection, resetQuickActionSelection, setQuickActionSelection } from "../utils/quickActions";
+import {
+  getQuickActions,
+  getQuickActionSelection,
+  resetQuickActionSelection,
+  setQuickActionSelection,
+} from "../utils/quickActions";
+import {
+  applyUiPreferences,
+  fontSizeOptions,
+  getFontSizePreference,
+  getThemePreference,
+  setFontSizePreference,
+  setThemePreference,
+} from "../utils/preferences";
 
 function safeRole() {
   try {
@@ -15,8 +28,8 @@ export default function Settings() {
   const role = safeRole();
   const allActions = useMemo(() => getQuickActions(role), [role]);
   const [selectedIds, setSelectedIds] = useState(() => getQuickActionSelection(role));
-
-  const selectedCount = selectedIds.length;
+  const [theme, setTheme] = useState(() => getThemePreference());
+  const [fontSize, setFontSize] = useState(() => getFontSizePreference());
 
   function toggleAction(id) {
     const has = selectedIds.includes(id);
@@ -30,12 +43,56 @@ export default function Settings() {
     setSelectedIds(defaults);
   }
 
+  function updateTheme(nextTheme) {
+    const saved = setThemePreference(nextTheme);
+    setTheme(saved);
+    applyUiPreferences({ theme: saved, fontSize });
+  }
+
+  function updateFontSize(nextSize) {
+    const saved = setFontSizePreference(nextSize);
+    setFontSize(saved);
+    applyUiPreferences({ theme, fontSize: saved });
+  }
+
   return (
     <div className="page">
       <div className="pageHeader">
         <div>
           <h2 className="pageTitle">Settings</h2>
-          <div className="pageSub">Manage system preferences and account-level configuration.</div>
+          <div className="pageSub">Manage appearance and system preferences.</div>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 14 }}>
+        <div className="settingsSectionHead">
+          <div>
+            <h3 className="settingsSectionTitle">Appearance</h3>
+            <div className="pageSub settingsSectionSub">
+              Adjust the overall theme and reading size for the app.
+            </div>
+          </div>
+        </div>
+
+        <div className="formRow2">
+          <div>
+            <label>Theme</label>
+            <select className="input" value={theme} onChange={(event) => updateTheme(event.target.value)}>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </div>
+
+          <div>
+            <label>Font size</label>
+            <select className="input" value={fontSize} onChange={(event) => updateFontSize(event.target.value)}>
+              {fontSizeOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option.charAt(0).toUpperCase() + option.slice(1)}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -53,7 +110,7 @@ export default function Settings() {
         </div>
 
         <div className="settingsHint">
-          Selected: <strong>{selectedCount}</strong> of <strong>{allActions.length}</strong>
+          Selected: <strong>{selectedIds.length}</strong> of <strong>{allActions.length}</strong>
         </div>
 
         <div className="settingsQuickActionList">

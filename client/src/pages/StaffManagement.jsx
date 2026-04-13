@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../services/api";
+import { formatDateLong } from "../utils/formatters";
 
 const ROLE_OPTIONS = [
   { value: "OWNER", label: "OWNER" },
@@ -37,11 +38,51 @@ function AvatarPreview({ src, size = 72, alt }) {
     <img
       src={src}
       alt={alt}
-      style={{ width: size, height: size, borderRadius: 16, objectFit: "cover", border: "1px solid #E7EAF3" }}
+      style={{ width: size, height: size, borderRadius: 16, objectFit: "cover", border: "1px solid var(--border)" }}
       onError={(event) => {
         event.currentTarget.style.display = "none";
       }}
     />
+  );
+}
+
+function StaffAvatar({ src, name }) {
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt={name || "Staff"}
+        style={{ width: 40, height: 40, borderRadius: 12, objectFit: "cover", border: "1px solid var(--border)" }}
+        onError={(event) => {
+          event.currentTarget.style.display = "none";
+        }}
+      />
+    );
+  }
+
+  const initials = String(name || "U")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase() || "U";
+
+  return (
+    <div
+      style={{
+        width: 40,
+        height: 40,
+        borderRadius: 12,
+        display: "grid",
+        placeItems: "center",
+        background: "var(--primarySoft)",
+        border: "1px solid var(--border)",
+        fontWeight: 800,
+      }}
+    >
+      {initials}
+    </div>
   );
 }
 
@@ -356,7 +397,7 @@ export default function StaffManagement() {
           </button>
           {view !== "CREATE" ? (
             <button className="btn btn-primary" type="button" onClick={openCreate}>
-              Add User
+              Add Staff
             </button>
           ) : (
             <button className="btn btn-ghost" type="button" onClick={openList}>
@@ -410,6 +451,7 @@ export default function StaffManagement() {
                   <th>Username</th>
                   <th>Role</th>
                   <th>Status</th>
+                  <th>Date Added</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -417,7 +459,12 @@ export default function StaffManagement() {
               <tbody>
                 {visibleUsers.map((user) => (
                   <tr key={user.id}>
-                    <td style={{ fontWeight: 800 }}>{user.full_name}</td>
+                    <td>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <StaffAvatar src={user.avatar_url} name={user.full_name} />
+                        <div style={{ fontWeight: 800 }}>{user.full_name}</div>
+                      </div>
+                    </td>
                     <td>{user.username}</td>
                     <td>{user.role}</td>
                     <td>
@@ -425,6 +472,7 @@ export default function StaffManagement() {
                         {user.status}
                       </span>
                     </td>
+                    <td>{user.created_at ? formatDateLong(user.created_at) : "-"}</td>
                     <td>
                       <div className="rowActions">
                         <button className="btn" onClick={() => openManage(user)}>
@@ -437,10 +485,9 @@ export default function StaffManagement() {
                     </td>
                   </tr>
                 ))}
-
                 {visibleUsers.length === 0 && (
                   <tr>
-                    <td colSpan="5" style={{ opacity: 0.8, padding: 14 }}>
+                    <td colSpan="6" style={{ opacity: 0.8, padding: 14 }}>
                       No staff found for this filter.
                     </td>
                   </tr>
@@ -795,7 +842,7 @@ const modalBackdrop = {
 
 const modalCard = {
   width: "min(900px, 100%)",
-  background: "white",
+  background: "var(--surface)",
   borderRadius: 14,
   padding: 16,
   boxShadow: "0 18px 60px rgba(0,0,0,0.35)",
@@ -806,7 +853,7 @@ const modalCard = {
 const fieldWrap = { display: "grid", gap: 6 };
 const label = {
   fontSize: 13,
-  color: "#111827",
+  color: "var(--text)",
   fontWeight: 600,
   marginBottom: 6,
   display: "block",
@@ -815,26 +862,27 @@ const label = {
 const btnGhost = {
   padding: "8px 12px",
   borderRadius: 10,
-  border: "1px solid #999",
+  border: "1px solid var(--border)",
   background: "transparent",
   cursor: "pointer",
+  color: "var(--text)",
 };
-const alertErr = { marginTop: 12, padding: 12, borderRadius: 10, background: "#ffe5e5" };
+const alertErr = { marginTop: 12, padding: 12, borderRadius: 10, background: "rgba(239,68,68,0.12)", color: "var(--text)" };
 const avatarCard = {
   display: "grid",
   gap: 8,
   padding: 12,
   borderRadius: 14,
-  border: "1px solid #E7EAF3",
-  background: "#FBFBFE",
+  border: "1px solid var(--border)",
+  background: "var(--surface2)",
   justifyItems: "start",
 };
 const tabButton = (active) => ({
   padding: "10px 14px",
   borderRadius: 999,
-  border: active ? "1px solid rgba(209, 122, 45, 0.35)" : "1px solid #E7EAF3",
-  background: active ? "rgba(209, 122, 45, 0.14)" : "#FFFFFF",
-  color: "#111827",
+  border: active ? "1px solid rgba(209, 122, 45, 0.35)" : "1px solid var(--border)",
+  background: active ? "rgba(209, 122, 45, 0.14)" : "var(--surface)",
+  color: "var(--text)",
   fontWeight: 700,
   cursor: "pointer",
 });

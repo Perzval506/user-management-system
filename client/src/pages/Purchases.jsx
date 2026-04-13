@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import api from "../services/api";
+import ConfirmModal from "../components/ConfirmModal";
 import { useToast } from "../components/Toast";
-import { formatDateTimeFriendly, formatMoney, formatNumber } from "../utils/formatters";
+import { formatDateLong, formatDateTimeFriendly, formatMoney, formatNumber } from "../utils/formatters";
 
 export default function Purchases() {
   const toast = useToast();
@@ -10,14 +11,17 @@ export default function Purchases() {
   const [saving, setSaving] = useState(false);
   const [ingredients, setIngredients] = useState([]);
   const [form, setForm] = useState({ ingredientName: "", quantity: "", price: "" });
-
-  const total = useMemo(() => items.reduce((sum, row) => sum + Number(row.price || 0), 0), [items]);
+  const [weeklyHistory, setWeeklyHistory] = useState([]);
+  const [weeklyTotal, setWeeklyTotal] = useState(0);
+  const [deletingPurchase, setDeletingPurchase] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const [purchasesResponse, ingredientsResponse] = await Promise.all([api.get("/purchases"), api.get("/ingredients")]);
       setItems(purchasesResponse.data?.items || []);
+      setWeeklyHistory(purchasesResponse.data?.weeklyHistory || []);
+      setWeeklyTotal(Number(purchasesResponse.data?.weeklyTotal || 0));
       setIngredients(ingredientsResponse.data || []);
     } catch (error) {
       toast.push({
@@ -47,8 +51,16 @@ export default function Purchases() {
 
     setSaving(true);
     try {
+      const selectedIngredient = ingredients.find(
+        (ingredient) => String(ingredient.ingredient_name || "").toUpperCase() === form.ingredientName.trim().toUpperCase()
+      );
+      if (!selectedIngredient) {
+        return toast.push({ type: "error", title: "Missing ingredient", message: "Select a valid ingredient from the list." });
+      }
+
       await api.post("/purchases", {
-        ingredientName: form.ingredientName.trim(),
+        ingredientId: selectedIngredient.id,
+        ingredientName: form.ingredientName.trim().toUpperCase(),
         quantity: qty,
         price,
       });
@@ -71,6 +83,22 @@ export default function Purchases() {
     submitPurchase();
   }
 
+  async function confirmDeletePurchase() {
+    if (!deletingPurchase) return;
+    try {
+      await api.delete(`/purchases/${deletingPurchase.id}`);
+      toast.push({ type: "success", title: "Deleted", message: "Purchase record deleted." });
+      setDeletingPurchase(null);
+      await load();
+    } catch (error) {
+      toast.push({
+        type: "error",
+        title: "Delete failed",
+        message: error?.response?.data?.message || error.message || "Failed to delete purchase",
+      });
+    }
+  }
+
   return (
     <div className="page">
       <div className="pageHeader">
@@ -81,7 +109,7 @@ export default function Purchases() {
 
         <div className="pageActions">
           <div className="badge" style={{ background: "rgba(34,197,94,0.10)", borderColor: "rgba(34,197,94,0.25)" }}>
-            Total spent: {formatMoney(total)}
+            This week: {formatMoney(weeklyTotal)}
           </div>
         </div>
       </div>
@@ -92,9 +120,9 @@ export default function Purchases() {
             marginBottom: 14,
             padding: 12,
             borderRadius: 12,
-            background: "#f8fafc",
-            border: "1px solid rgba(15,23,42,0.08)",
-            color: "#475569",
+            background: "var(--surface2)",
+            border: "1px solid var(--border)",
+            color: "var(--muted)",
             lineHeight: 1.5,
           }}
         >
@@ -107,7 +135,7 @@ export default function Purchases() {
             <select name="ingredientName" value={form.ingredientName} onChange={onChange} className="input">
               <option value="">-- select ingredient --</option>
               {ingredients.map((ingredient) => (
-                <option key={ingredient.id} value={ingredient.ingredient_name}>{ingredient.ingredient_name}</option>
+                <option key={ingredient.id} value={ingredient.ingredient_name}>{String(ingredient.ingredient_name || "").toUpperCase()}</option>
               ))}
             </select>
           </div>
@@ -128,7 +156,7 @@ export default function Purchases() {
 
           <div>
             <label>Recorded at</label>
-            <div className="input" style={{ background: "#f8fafc" }}>{formatDateTimeFriendly(new Date())}</div>
+            <div className="input" style={{ background: "var(--surface2)" }}>{formatDateTimeFriendly(new Date())}</div>
           </div>
 
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
@@ -149,23 +177,29 @@ export default function Purchases() {
               <thead>
                 <tr>
                   <th>Ingredient</th>
-                  <th>Quantity</th>
-                  <th>Total cost</th>
-                  <th>Created at</th>
+                  <th className="text-right" style={{ width: 140 }}>Quantity</th>
+                  <th className="text-right" style={{ width: 160 }}>Total cost</th>
+                  <th style={{ width: 220 }}>Created at</th>
+                  <th style={{ width: 120 }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((row) => (
                   <tr key={row.id}>
                     <td style={{ fontWeight: 700 }}>{row.ingredient_name}</td>
-                    <td className="text-right mono">{formatNumber(row.quantity || 0)}</td>
-                    <td className="text-right mono">{formatMoney(row.price || 0)}</td>
-                    <td>{row.createdAt ? formatDateTimeFriendly(row.createdAt) : "-"}</td>
+                    <td className="text-right mono" style={{ width: 140 }}>{formatNumber(row.quantity || 0)}</td>
+                    <td className="text-right mono" style={{ width: 160 }}>{formatMoney(row.price || 0)}</td>
+                    <td style={{ width: 220 }}>{row.createdAt ? formatDateTimeFriendly(row.createdAt) : "-"}</td>
+                    <td style={{ width: 120 }}>
+                      <button type="button" className="btn btn-ghost" onClick={() => setDeletingPurchase(row)}>
+                        Delete
+                      </button>
+                    </td>
                   </tr>
                 ))}
                 {items.length === 0 && (
                   <tr>
-                    <td colSpan="4" style={{ padding: 14, opacity: 0.7 }}>No purchases yet.</td>
+                    <td colSpan="5" style={{ padding: 14, opacity: 0.7 }}>No purchases yet.</td>
                   </tr>
                 )}
               </tbody>
@@ -173,6 +207,44 @@ export default function Purchases() {
           </div>
         )}
       </div>
+
+      <div className="tableWrap" style={{ marginTop: 14 }}>
+        <div className="tableTopBar">Weekly Spending History</div>
+        <div style={{ overflowX: "auto" }}>
+          <table className="table">
+            <thead>
+              <tr>
+                <th style={{ width: 220 }}>Week starting</th>
+                <th className="text-right" style={{ width: 160 }}>Purchase count</th>
+                <th className="text-right" style={{ width: 180 }}>Total spent</th>
+              </tr>
+            </thead>
+            <tbody>
+              {weeklyHistory.map((row) => (
+                <tr key={row.week_start}>
+                  <td style={{ width: 220 }}>{formatDateLong(row.week_start)}</td>
+                  <td className="text-right mono" style={{ width: 160 }}>{formatNumber(row.purchase_count || 0, 0)}</td>
+                  <td className="text-right mono" style={{ width: 180 }}>{formatMoney(row.purchase_total || 0)}</td>
+                </tr>
+              ))}
+              {weeklyHistory.length === 0 && (
+                <tr>
+                  <td colSpan="3" style={{ padding: 14, opacity: 0.7 }}>Weekly spending history will appear once purchases are recorded.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <ConfirmModal
+        open={Boolean(deletingPurchase)}
+        title="Delete purchase?"
+        message={deletingPurchase ? `Delete the purchase record for ${deletingPurchase.ingredient_name}?` : ""}
+        confirmLabel="Delete Purchase"
+        onCancel={() => setDeletingPurchase(null)}
+        onConfirm={confirmDeletePurchase}
+      />
     </div>
   );
 }

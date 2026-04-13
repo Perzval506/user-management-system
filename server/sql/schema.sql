@@ -242,3 +242,40 @@ CREATE TABLE IF NOT EXISTS sales_items (
     ON DELETE RESTRICT,
   INDEX idx_sales_items_tx (sales_transaction_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS sales_item_inventory_usage (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  sales_item_id BIGINT NOT NULL,
+  ingredient_id INT NOT NULL,
+  qty_used_base_unit DECIMAL(12,3) NOT NULL DEFAULT 0.000,
+  base_unit VARCHAR(20) NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_sales_usage_item
+    FOREIGN KEY (sales_item_id) REFERENCES sales_items(id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_sales_usage_ingredient
+    FOREIGN KEY (ingredient_id) REFERENCES ingredients(id)
+    ON DELETE RESTRICT,
+  INDEX idx_sales_usage_item (sales_item_id),
+  INDEX idx_sales_usage_ingredient (ingredient_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  actor_user_id INT NULL,
+  actor_name VARCHAR(120) NULL,
+  actor_role VARCHAR(60) NULL,
+  module_name VARCHAR(80) NOT NULL,
+  action_name VARCHAR(80) NOT NULL,
+  entity_type VARCHAR(80) NULL,
+  entity_id BIGINT NULL,
+  summary VARCHAR(255) NULL,
+  metadata_json JSON NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_audit_actor
+    FOREIGN KEY (actor_user_id) REFERENCES users(id)
+    ON DELETE SET NULL,
+  INDEX idx_audit_created (created_at),
+  INDEX idx_audit_module (module_name, created_at),
+  INDEX idx_audit_entity (entity_type, entity_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
