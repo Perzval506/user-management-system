@@ -6,6 +6,7 @@ const { buildActor, writeAuditLog } = require("../utils/auditLog");
 const router = express.Router();
 
 const MENU_STATUSES = new Set(["ACTIVE", "INACTIVE"]);
+const MENU_TYPES = new Set(["FOOD", "DRINK", "ADD_ON"]);
 
 function isValidDate(value) {
   if (!value) return false;
@@ -24,13 +25,18 @@ function validateMenuPayload(body, { requireName = true } = {}) {
   const recipeName = String(body.recipe_name || "").trim();
   const recipeDescription = normalizeOptionalText(body.recipe_description);
   const status = String(body.status || "ACTIVE").trim().toUpperCase();
+  const menuType = String(body.menu_type || "FOOD").trim().toUpperCase();
   const result = {
     menuName,
     description,
     recipeName: recipeName || null,
     recipeDescription,
     status,
+    menuType,
     targetFoodCostPercent: null,
+    dineInPackagingCost: null,
+    takeoutPackagingCost: null,
+    deliveryPackagingCost: null,
     sellingPrice: undefined,
   };
 
@@ -40,6 +46,9 @@ function validateMenuPayload(body, { requireName = true } = {}) {
   if (!MENU_STATUSES.has(status)) {
     return { error: "status must be ACTIVE or INACTIVE" };
   }
+  if (!MENU_TYPES.has(menuType)) {
+    return { error: "menu_type must be FOOD, DRINK, or ADD_ON" };
+  }
 
   if (typeof body.target_food_cost_percent !== "undefined" && body.target_food_cost_percent !== "" && body.target_food_cost_percent !== null) {
     const tfcp = Number(body.target_food_cost_percent);
@@ -47,6 +56,20 @@ function validateMenuPayload(body, { requireName = true } = {}) {
       return { error: "target_food_cost_percent must be greater than 0 and less than 1" };
     }
     result.targetFoodCostPercent = tfcp;
+  }
+
+  for (const [field, resultKey] of [
+    ["dine_in_packaging_cost", "dineInPackagingCost"],
+    ["takeout_packaging_cost", "takeoutPackagingCost"],
+    ["delivery_packaging_cost", "deliveryPackagingCost"],
+  ]) {
+    if (typeof body[field] !== "undefined" && body[field] !== "" && body[field] !== null) {
+      const parsed = Number(body[field]);
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        return { error: `${field} must be 0 or greater` };
+      }
+      result[resultKey] = parsed;
+    }
   }
 
   if (typeof body.selling_price !== "undefined") {
@@ -125,13 +148,21 @@ router.post("/", requireAuth, requireRole("OWNER"), async (req, res) => {
     menuName,
     description,
     status,
+    menuType,
     sellingPrice,
     recipeName,
     recipeDescription,
     targetFoodCostPercent,
+    dineInPackagingCost,
+    takeoutPackagingCost,
+    deliveryPackagingCost,
   } = validated.value;
   const cols = await getMenuColumns();
   const hasTargetCost = !!cols.target_food_cost_percent;
+  const hasMenuType = !!cols.menu_type;
+  const hasDineInPackagingCost = !!cols.dine_in_packaging_cost;
+  const hasTakeoutPackagingCost = !!cols.takeout_packaging_cost;
+  const hasDeliveryPackagingCost = !!cols.delivery_packaging_cost;
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -145,10 +176,30 @@ router.post("/", requireAuth, requireRole("OWNER"), async (req, res) => {
     const fields = ["menu_name", "description", "recipe_version_id"];
     const placeholders = ["?", "?", "?"];
     const values = [menuName, description, recipeVersionId];
+    if (hasMenuType) {
+      fields.push("menu_type");
+      placeholders.push("?");
+      values.push(menuType);
+    }
     if (hasTargetCost) {
       fields.push("target_food_cost_percent");
       placeholders.push("?");
       values.push(targetFoodCostPercent);
+    }
+    if (hasDineInPackagingCost) {
+      fields.push("dine_in_packaging_cost");
+      placeholders.push("?");
+      values.push(dineInPackagingCost);
+    }
+    if (hasTakeoutPackagingCost) {
+      fields.push("takeout_packaging_cost");
+      placeholders.push("?");
+      values.push(takeoutPackagingCost);
+    }
+    if (hasDeliveryPackagingCost) {
+      fields.push("delivery_packaging_cost");
+      placeholders.push("?");
+      values.push(deliveryPackagingCost);
     }
     fields.push("status");
     placeholders.push("?");
@@ -195,15 +246,36 @@ router.put("/:id", requireAuth, requireRole("OWNER"), async (req, res) => {
   const { id } = req.params;
   const validated = validateMenuPayload(req.body, { requireName: true });
   if (validated.error) return res.status(400).json({ error: validated.error });
-  const { menuName, description, status, targetFoodCostPercent } = validated.value;
+  const { menuName, description, status, menuType, targetFoodCostPercent, dineInPackagingCost, takeoutPackagingCost, deliveryPackagingCost } = validated.value;
   try {
     const cols = await getMenuColumns();
     const hasTargetCost = !!cols.target_food_cost_percent;
+    const hasMenuType = !!cols.menu_type;
+    const hasDineInPackagingCost = !!cols.dine_in_packaging_cost;
+    const hasTakeoutPackagingCost = !!cols.takeout_packaging_cost;
+    const hasDeliveryPackagingCost = !!cols.delivery_packaging_cost;
     const updates = ["menu_name=?", "description=?", "status=?"];
     const vals = [menuName, description, status];
+    if (hasMenuType) {
+      updates.splice(2, 0, "menu_type=?");
+      vals.splice(2, 0, menuType);
+    }
     if (hasTargetCost) {
-      updates.splice(2, 0, "target_food_cost_percent=?");
-      vals.splice(2, 0, targetFoodCostPercent);
+      const targetIndex = hasMenuType ? 3 : 2;
+      updates.splice(targetIndex, 0, "target_food_cost_percent=?");
+      vals.splice(targetIndex, 0, targetFoodCostPercent);
+    }
+    if (hasDineInPackagingCost) {
+      updates.push("dine_in_packaging_cost=?");
+      vals.push(dineInPackagingCost);
+    }
+    if (hasTakeoutPackagingCost) {
+      updates.push("takeout_packaging_cost=?");
+      vals.push(takeoutPackagingCost);
+    }
+    if (hasDeliveryPackagingCost) {
+      updates.push("delivery_packaging_cost=?");
+      vals.push(deliveryPackagingCost);
     }
 
     await pool.query(

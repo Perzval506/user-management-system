@@ -8,9 +8,13 @@ const emptyForm = {
   menu_name: "",
   description: "",
   status: "ACTIVE",
+  menu_type: "FOOD",
   price: "",
   size: "",
   target_food_cost_percent: 0.3,
+  dine_in_packaging_cost: "0.00",
+  takeout_packaging_cost: "0.00",
+  delivery_packaging_cost: "0.00",
 };
 
 const MANAGE_SECTIONS = {
@@ -84,9 +88,13 @@ export default function AdminMenu() {
       menu_name: row.menu_name ?? "",
       description: row.description ?? "",
       status: row.status ?? "ACTIVE",
+      menu_type: row.menu_type ?? "FOOD",
       price: "",
       size: "",
       target_food_cost_percent: row.target_food_cost_percent ?? 0.3,
+      dine_in_packaging_cost: row.dine_in_packaging_cost != null ? String(row.dine_in_packaging_cost) : "0.00",
+      takeout_packaging_cost: row.takeout_packaging_cost != null ? String(row.takeout_packaging_cost) : "0.00",
+      delivery_packaging_cost: row.delivery_packaging_cost != null ? String(row.delivery_packaging_cost) : "0.00",
     });
     setRecipeCreateForm({
       recipe_name: row.menu_name || "",
@@ -134,10 +142,15 @@ export default function AdminMenu() {
           menu_name: finalName,
           description: form.description.trim() || null,
           status: form.status || "ACTIVE",
+          menu_type: form.menu_type || "FOOD",
         };
         const tfcp = parseFloat(form.target_food_cost_percent);
         if (Number.isFinite(tfcp)) {
           payload.target_food_cost_percent = tfcp;
+        }
+        for (const field of ["dine_in_packaging_cost", "takeout_packaging_cost", "delivery_packaging_cost"]) {
+          const parsed = parseFloat(form[field]);
+          if (Number.isFinite(parsed)) payload[field] = parsed;
         }
 
         if (form.price !== undefined && form.price !== null && form.price !== "") {
@@ -165,7 +178,11 @@ export default function AdminMenu() {
           menu_name: form.menu_name.trim(),
           description: form.description.trim() || null,
           status: form.status || "ACTIVE",
+          menu_type: form.menu_type || "FOOD",
           target_food_cost_percent: Number.isFinite(tfcp) ? tfcp : null,
+          dine_in_packaging_cost: Number.isFinite(parseFloat(form.dine_in_packaging_cost)) ? parseFloat(form.dine_in_packaging_cost) : 0,
+          takeout_packaging_cost: Number.isFinite(parseFloat(form.takeout_packaging_cost)) ? parseFloat(form.takeout_packaging_cost) : 0,
+          delivery_packaging_cost: Number.isFinite(parseFloat(form.delivery_packaging_cost)) ? parseFloat(form.delivery_packaging_cost) : 0,
         });
         toast.push({
           type: "success",
@@ -216,6 +233,7 @@ export default function AdminMenu() {
         menu_name: row.menu_name,
         description: row.description || null,
         status: "ACTIVE",
+        menu_type: row.menu_type || "FOOD",
       });
       toast.push({
         type: "success",
@@ -283,7 +301,11 @@ export default function AdminMenu() {
         menu_name: editingItem.menu_name,
         description: editingItem.description || null,
         status: editingItem.status || "ACTIVE",
+        menu_type: editingItem.menu_type || form.menu_type || "FOOD",
         target_food_cost_percent: tfcp,
+        dine_in_packaging_cost: Number.isFinite(parseFloat(form.dine_in_packaging_cost)) ? parseFloat(form.dine_in_packaging_cost) : 0,
+        takeout_packaging_cost: Number.isFinite(parseFloat(form.takeout_packaging_cost)) ? parseFloat(form.takeout_packaging_cost) : 0,
+        delivery_packaging_cost: Number.isFinite(parseFloat(form.delivery_packaging_cost)) ? parseFloat(form.delivery_packaging_cost) : 0,
       });
       toast.push({
         type: "success",
@@ -396,6 +418,7 @@ export default function AdminMenu() {
                 <tr>
                   <th>Name</th>
                   <th>Description</th>
+                  <th>Type</th>
                   <th>Recipe</th>
                   <th>Status</th>
                   <th className="text-right">Price</th>
@@ -416,6 +439,9 @@ export default function AdminMenu() {
                       }}
                     >
                       {row.description || "-"}
+                    </td>
+                    <td>
+                      <span className="badge">{String(row.menu_type || "FOOD").replace("_", " ")}</span>
                     </td>
                     <td>
                       <span className={`badge ${row.recipe_version_id ? "badge-active" : "badge-inactive"}`}>
@@ -461,7 +487,7 @@ export default function AdminMenu() {
 
                 {visibleItems.length === 0 && (
                   <tr>
-                    <td colSpan="6" style={{ opacity: 0.8, padding: 14 }}>
+                    <td colSpan="7" style={{ opacity: 0.8, padding: 14 }}>
                       No menu items found.
                     </td>
                   </tr>
@@ -573,6 +599,15 @@ export default function AdminMenu() {
                 </div>
 
                 <div>
+                  <label>Menu type</label>
+                  <select name="menu_type" value={form.menu_type} onChange={onChange} className="input">
+                    <option value="FOOD">FOOD</option>
+                    <option value="DRINK">DRINK</option>
+                    <option value="ADD_ON">ADD ON</option>
+                  </select>
+                </div>
+
+                <div>
                   <label>
                     Target food cost (decimal)
                     <span style={{ color: "#6B7280", fontWeight: 400 }}> — e.g., 0.30 = 30%</span>
@@ -587,6 +622,49 @@ export default function AdminMenu() {
                     onChange={onChange}
                     className="input"
                     placeholder="0.30"
+                  />
+                </div>
+
+                <div className="formRow2">
+                  <div>
+                    <label>Dine-in packaging cost</label>
+                    <input
+                      name="dine_in_packaging_cost"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={form.dine_in_packaging_cost}
+                      onChange={onChange}
+                      className="input"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div>
+                    <label>Takeout packaging cost</label>
+                    <input
+                      name="takeout_packaging_cost"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={form.takeout_packaging_cost}
+                      onChange={onChange}
+                      className="input"
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label>Delivery packaging cost</label>
+                  <input
+                    name="delivery_packaging_cost"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={form.delivery_packaging_cost}
+                    onChange={onChange}
+                    className="input"
+                    placeholder="0.00"
                   />
                 </div>
 
@@ -644,6 +722,52 @@ export default function AdminMenu() {
                   </div>
                   <div style={{ color: "#6B7280", marginTop: 6, fontSize: 12 }}>
                     Used for suggested pricing and profitability.
+                  </div>
+                </div>
+
+                <div className="formRow2">
+                  <div>
+                    <label>Dine-in packaging cost</label>
+                    <input
+                      className="input"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      name="dine_in_packaging_cost"
+                      value={form.dine_in_packaging_cost}
+                      onChange={onChange}
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div>
+                    <label>Takeout packaging cost</label>
+                    <input
+                      className="input"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      name="takeout_packaging_cost"
+                      value={form.takeout_packaging_cost}
+                      onChange={onChange}
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label>Delivery packaging cost</label>
+                  <input
+                    className="input"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    name="delivery_packaging_cost"
+                    value={form.delivery_packaging_cost}
+                    onChange={onChange}
+                    placeholder="0.00"
+                  />
+                  <div style={{ color: "#6B7280", marginTop: 6, fontSize: 12 }}>
+                    Use these for containers, utensils, bags, and other order-type-specific packaging.
                   </div>
                 </div>
 
@@ -712,6 +836,9 @@ export default function AdminMenu() {
                         ? parseFloat(form.target_food_cost_percent)
                         : 0.3
                     }
+                    dineInPackagingCost={parseFloat(form.dine_in_packaging_cost) || 0}
+                    takeoutPackagingCost={parseFloat(form.takeout_packaging_cost) || 0}
+                    deliveryPackagingCost={parseFloat(form.delivery_packaging_cost) || 0}
                     onTargetChange={(next) =>
                       setForm((prev) => ({
                         ...prev,

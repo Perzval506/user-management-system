@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import api from "../services/api";
 import { useToast } from "../components/Toast";
 import { formatDateLong, formatDateTimeFriendly, formatMoney, formatNumber } from "../utils/formatters";
+import { normalizeInventoryCategory } from "../utils/inventoryCategories";
 
 const LOW_STOCK_THRESHOLD = 5;
 
@@ -40,6 +41,7 @@ export default function OwnerDashboard() {
     menu: [],
     purchases: [],
     purchaseOrders: [],
+    weeklyInventoryReview: { recommendations: [], categories: [] },
     salesSummary: { totalRevenue: 0, totalTransactions: 0, todayRevenue: 0 },
     purchaseWeeklyTotal: 0,
     purchaseOrderWeeklyTotal: 0,
@@ -57,6 +59,7 @@ export default function OwnerDashboard() {
         purchaseOrdersResponse,
         salesResponse,
         purchaseOrderWeeklyResponse,
+        weeklyInventoryResponse,
       ] = await Promise.all([
         api.get("/users"),
         api.get("/ingredients"),
@@ -66,6 +69,7 @@ export default function OwnerDashboard() {
         api.get("/purchase-orders"),
         api.get("/sales"),
         api.get("/purchase-orders/summary/weekly"),
+        api.get("/inventory/weekly-review"),
       ]);
 
       const menuItems = menuResponse.data || [];
@@ -98,6 +102,7 @@ export default function OwnerDashboard() {
         })),
         purchases: purchasesResponse.data?.items || [],
         purchaseOrders: purchaseOrdersResponse.data || [],
+        weeklyInventoryReview: weeklyInventoryResponse.data || { recommendations: [], categories: [] },
         salesSummary: salesResponse.data?.summary || { totalRevenue: 0, totalTransactions: 0, todayRevenue: 0 },
         purchaseWeeklyTotal: Number(purchasesResponse.data?.weeklyTotal || 0),
         purchaseOrderWeeklyTotal: Number(purchaseOrderWeeklyResponse.data?.weeklyTotal || 0),
@@ -154,6 +159,10 @@ export default function OwnerDashboard() {
   );
   const recentPurchases = useMemo(() => dashboard.purchases.slice(0, 5), [dashboard.purchases]);
   const recentPurchaseOrders = useMemo(() => dashboard.purchaseOrders.slice(0, 5), [dashboard.purchaseOrders]);
+  const weeklyBuyRecommendations = useMemo(
+    () => (dashboard.weeklyInventoryReview?.recommendations || []).filter((item) => item.needs_attention).slice(0, 6),
+    [dashboard.weeklyInventoryReview]
+  );
 
   return (
     <div className="page">
@@ -214,6 +223,30 @@ export default function OwnerDashboard() {
           gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
         }}
       >
+        <DashboardList
+          title="Weekly Buying Plan"
+          emptyText="No urgent weekly buys suggested."
+          actionLabel="Open Stock Summary"
+          onAction={() => navigate("/admin/inventory/summary")}
+          items={weeklyBuyRecommendations}
+          renderItem={(item) => (
+            <div key={item.id} style={listRow}>
+              <div>
+                <div style={{ fontWeight: 800 }}>{item.ingredient_name}</div>
+                <div style={{ color: "#6B7280", fontSize: 13 }}>
+                  {normalizeInventoryCategory(item.category)} | Used {formatNumber(item.weekly_used)} {item.base_unit}
+                </div>
+              </div>
+              <div style={{ display: "grid", gap: 6, justifyItems: "end" }}>
+                <span className="badge badge-pending">Buy next</span>
+                <div className="mono" style={{ fontWeight: 800 }}>
+                  {formatNumber(item.recommended_buy_qty)} {item.base_unit}
+                </div>
+              </div>
+            </div>
+          )}
+        />
+
         <DashboardList
           title="Inventory Alerts"
           emptyText="Stock levels look healthy right now."

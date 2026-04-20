@@ -29,6 +29,26 @@ function homePathForRole(role) {
   return role === "OWNER" ? "/admin" : "/staff";
 }
 
+function staffNavItemsForRole(role) {
+  if (role === "CASHIER") {
+    return [
+      { to: "/staff", label: "My Profile", icon: "users" },
+      { to: "/staff/sales", label: "Sales", icon: "sales" },
+    ];
+  }
+
+  if (role === "STOCKROOM_STAFF") {
+    return [
+      { to: "/staff", label: "My Profile", icon: "users" },
+      { to: "/staff/ingredients", label: "Ingredients", icon: "box" },
+      { to: "/staff/inventory-summary", label: "Stock Summary", icon: "box" },
+      { to: "/staff/purchase-requests", label: "Purchase Requests", icon: "purchasing" },
+    ];
+  }
+
+  return [{ to: "/staff", label: "My Profile", icon: "users" }];
+}
+
 const Icons = {
   dashboard: (
     <svg viewBox="0 0 24 24" fill="none">
@@ -424,7 +444,7 @@ export default function AppShell() {
                 <div ref={purchasingRef} className="navGroup">
                   <button
                     type="button"
-                    className={`navLink navBtn ${isActiveGroup("/admin/purchases") || isActiveGroup("/admin/purchase-orders") ? "active" : ""}`}
+                    className={`navLink navBtn ${isActiveGroup("/admin/purchases") || isActiveGroup("/admin/purchase-requests") || isActiveGroup("/admin/purchase-orders") ? "active" : ""}`}
                     onClick={() => {
                       setOpenPurchasingDrop((value) => !value);
                     }}
@@ -436,6 +456,9 @@ export default function AppShell() {
 
                   {openPurchasingDrop && (
                     <div className="dropdown open">
+                      <button className="dropdownItem" onClick={() => navigate("/admin/purchase-requests")}>
+                        Purchase Requests
+                      </button>
                       <button className="dropdownItem" onClick={() => navigate("/admin/purchases")}>
                         Quick Purchases
                       </button>
@@ -455,6 +478,14 @@ export default function AppShell() {
                 >
                   <span className="ico">{Icons.menu}</span>
                   <span>Menu</span>
+                </NavLink>
+
+                <NavLink
+                  to="/admin/catering-orders"
+                  className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}
+                >
+                  <span className="ico">{Icons.menu}</span>
+                  <span>Catering</span>
                 </NavLink>
 
                 <NavLink to="/audit" className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}>
@@ -480,12 +511,13 @@ export default function AppShell() {
               </>
             )}
 
-            {role !== "OWNER" && (
-              <NavLink to="/staff" className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}>
-                <span className="ico">{Icons.users}</span>
-                <span>My Profile</span>
-              </NavLink>
-            )}
+            {role !== "OWNER" &&
+              staffNavItemsForRole(role).map((item) => (
+                <NavLink key={item.to} to={item.to} end={item.to === "/staff"} className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}>
+                  <span className="ico">{Icons[item.icon] || Icons.users}</span>
+                  <span>{item.label}</span>
+                </NavLink>
+              ))}
           </nav>
 
           <button className="logoutBtn" onClick={requestLogout}>

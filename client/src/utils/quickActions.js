@@ -7,8 +7,10 @@ export const OWNER_QUICK_ACTIONS = [
   { id: "ingredientAdd", to: "/admin/items/add", label: "Add Ingredient", iconKey: "box", description: "Create a new ingredient item." },
   { id: "menuAdd", to: "/admin/menu/add", label: "Add Menu Item", iconKey: "menu", description: "Create a new menu entry." },
   { id: "quickPurchase", to: "/admin/purchases", label: "Quick Purchase", iconKey: "box", description: "Record single purchase entries." },
+  { id: "purchaseRequest", to: "/admin/purchase-requests", label: "Purchase Requests", iconKey: "box", description: "Review stockroom requests before purchasing." },
   { id: "purchaseOrder", to: "/admin/purchase-orders", label: "Purchase Order", iconKey: "box", description: "Open purchase order records." },
   { id: "inventory", to: "/admin/inventory/summary", label: "Inventory", iconKey: "box", description: "View inventory summary." },
+  { id: "cateringOrders", to: "/admin/catering-orders", label: "Catering", iconKey: "menu", description: "Build custom event packages and deposits." },
   { id: "settings", to: "/settings", label: "Settings", iconKey: "settings", description: "Open system preferences." },
 ];
 
@@ -24,6 +26,20 @@ function normalizeOwnerSelection(ids) {
 
 export function getQuickActions(role) {
   if (role === "OWNER") return OWNER_QUICK_ACTIONS;
+  if (role === "CASHIER") {
+    return [
+      { id: "staffProfile", to: "/staff", label: "My Profile", iconKey: "users", description: "Open your profile." },
+      { id: "staffSales", to: "/staff/sales", label: "Sales", iconKey: "sales", description: "Record and review guest checks." },
+    ];
+  }
+  if (role === "STOCKROOM_STAFF") {
+    return [
+      { id: "staffProfile", to: "/staff", label: "My Profile", iconKey: "users", description: "Open your profile." },
+      { id: "staffIngredients", to: "/staff/ingredients", label: "Ingredients", iconKey: "box", description: "Review and update ingredient records." },
+      { id: "staffInventory", to: "/staff/inventory-summary", label: "Stock Summary", iconKey: "box", description: "Check on-hand stock levels." },
+      { id: "staffPurchaseRequests", to: "/staff/purchase-requests", label: "Purchase Requests", iconKey: "purchasing", description: "Submit ingredients that need to be bought." },
+    ];
+  }
   return [{ id: "staffProfile", to: "/staff", label: "My Profile", iconKey: "users", description: "Open your profile." }];
 }
 

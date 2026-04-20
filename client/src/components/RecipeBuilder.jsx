@@ -150,6 +150,9 @@ export default function RecipeBuilder({
   onClose,
   currentSellingPrice = 0,
   targetFoodCostPercent = 0.3,
+  dineInPackagingCost = 0,
+  takeoutPackagingCost = 0,
+  deliveryPackagingCost = 0,
   onTargetChange,
 }) {
   const toast = useToast();
@@ -163,6 +166,7 @@ export default function RecipeBuilder({
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const [costingOrderType, setCostingOrderType] = useState("DINE_IN");
   const draftKey = `recipe_draft:${menuId}`;
 
   const ingredientOptions = useMemo(
@@ -226,8 +230,12 @@ export default function RecipeBuilder({
       portion_size_grams: isFinite(portionSize) ? portionSize : 0,
       target_food_cost_percent: Number(targetFoodCostPercent) || 0,
       current_selling_price: Number(currentSellingPrice) || 0,
+      order_type: costingOrderType,
+      dine_in_packaging_cost: Number(dineInPackagingCost) || 0,
+      takeout_packaging_cost: Number(takeoutPackagingCost) || 0,
+      delivery_packaging_cost: Number(deliveryPackagingCost) || 0,
     });
-  }, [lines, ingredientsOpt, recipeVersion, targetFoodCostPercent, currentSellingPrice]);
+  }, [lines, ingredientsOpt, recipeVersion, targetFoodCostPercent, currentSellingPrice, costingOrderType, dineInPackagingCost, takeoutPackagingCost, deliveryPackagingCost]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -470,6 +478,14 @@ export default function RecipeBuilder({
           <strong>Recipe version:</strong>{" "}
           {recipeVersion?.version_no ? `v${recipeVersion.version_no}` : "Draft"}
         </div>
+        <div style={{ minWidth: 180 }}>
+          <label style={{ display: "block", fontSize: 12, color: "#6B7280", marginBottom: 4 }}>Costing order type</label>
+          <select className="input" value={costingOrderType} onChange={(event) => setCostingOrderType(event.target.value)}>
+            <option value="DINE_IN">DINE IN</option>
+            <option value="TAKEOUT">TAKEOUT</option>
+            <option value="DELIVERY">DELIVERY</option>
+          </select>
+        </div>
         {dirty && (
           <span style={{ marginLeft: 4, color: "#b44", fontWeight: 700 }}>
             Unsaved changes
@@ -578,6 +594,12 @@ export default function RecipeBuilder({
               <div style={{ color: "#6B7280", marginBottom: 4 }}>Cost per portion</div>
               <div style={{ fontWeight: 800, fontSize: 22 }}>
                 {formatMoney(costingSummary?.cost_per_portion || 0)}
+              </div>
+            </div>
+            <div className="card" style={{ background: "#f8fafc" }}>
+              <div style={{ color: "#6B7280", marginBottom: 4 }}>Packaging / portion</div>
+              <div style={{ fontWeight: 800, fontSize: 22 }}>
+                {formatMoney(costingSummary?.packaging_cost_per_portion || 0)}
               </div>
             </div>
             <div className="card" style={{ background: "#f8fafc" }}>
@@ -738,8 +760,17 @@ export default function RecipeBuilder({
         >
           <CostCell label="Batch cost" value={formatMoney(costingSummary?.batch_cost || 0)} />
           <CostCell
+            label="Food cost / portion"
+            value={formatMoney(costingSummary?.food_cost_per_portion || 0)}
+          />
+          <CostCell
             label="Cost per portion"
             value={formatMoney(costingSummary?.cost_per_portion || 0)}
+          />
+          <CostCell
+            label="Packaging / portion"
+            value={formatMoney(costingSummary?.packaging_cost_per_portion || 0)}
+            helper={`Applied for ${String(costingSummary?.order_type || costingOrderType).replace("_", " ")}`}
           />
           <CostCell
             label="Suggested price"

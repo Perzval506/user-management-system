@@ -6,7 +6,10 @@ const ALLOWED_UNITS = require("../utils/units");
 const { tableExists, columnExists } = require("../utils/dbIntrospection");
 const { buildActor, writeAuditLog } = require("../utils/auditLog");
 
-router.use(requireAuth, requireAnyRole(["OWNER", "STOCKROOM_STAFF"]));
+const canReadIngredients = requireAnyRole(["OWNER", "STOCKROOM_STAFF", "CASHIER"]);
+const canManageIngredients = requireAnyRole(["OWNER", "STOCKROOM_STAFF"]);
+
+router.use(requireAuth);
 
 let cachedCols = null;
 async function getIngredientColumns() {
@@ -36,7 +39,89 @@ const currentApCostColumn = async () => {
   return null;
 };
 
-router.get("/", async (req, res) => {
+async function categoryTableAvailable() {
+  return tableExists("ingredient_categories");
+}
+
+async function syncCategoryRegistry(conn, categoryName) {
+  const normalized = String(categoryName || "").trim();
+  if (!normalized) return;
+  if (!(await categoryTableAvailable())) return;
+
+  await conn.query(
+    `INSERT INTO ingredient_categories (category_name, status)
+     VALUES (?, 'ACTIVE')
+     ON DUPLICATE KEY UPDATE status = 'ACTIVE', category_name = VALUES(category_name)`,
+    [normalized]
+  );
+}
+
+router.get("/categories", canReadIngredients, async (_req, res) => {
+  try {
+    if (await categoryTableAvailable()) {
+      const [rows] = await pool.query(
+        "SELECT id, category_name, status FROM ingredient_categories WHERE status='ACTIVE' ORDER BY category_name ASC"
+      );
+      return res.json(rows);
+    }
+
+    const [rows] = await pool.query(
+      `SELECT MIN(id) AS id, category AS category_name, 'ACTIVE' AS status
+         FROM ingredients
+        WHERE category IS NOT NULL
+          AND TRIM(category) <> ''
+        GROUP BY category
+        ORDER BY category ASC`
+    );
+    return res.json(rows);
+  } catch (err) {
+    console.error("/ingredients/categories GET failed:", err.message);
+    res.status(500).json({ message: "Failed to fetch ingredient categories" });
+  }
+});
+
+router.post("/categories", canManageIngredients, async (req, res) => {
+  const categoryName = String(req.body?.category_name || "").trim();
+  if (!categoryName) {
+    return res.status(400).json({ message: "category_name is required" });
+  }
+
+  if (!(await categoryTableAvailable())) {
+    return res.status(503).json({ message: "Ingredient category setup is incomplete. Run the latest database migration first." });
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [result] = await conn.query(
+      `INSERT INTO ingredient_categories (category_name, status)
+       VALUES (?, 'ACTIVE')
+       ON DUPLICATE KEY UPDATE status = 'ACTIVE', category_name = VALUES(category_name)`,
+      [categoryName]
+    );
+    await writeAuditLog(
+      {
+        ...buildActor(req),
+        module_name: "INGREDIENT_CATEGORIES",
+        action_name: "CREATE",
+        entity_type: "ingredient_category",
+        entity_id: result.insertId || null,
+        summary: `Created ingredient category ${categoryName}.`,
+      },
+      conn
+    );
+    await conn.commit();
+    res.status(201).json({ ok: true, category_name: categoryName });
+  } catch (err) {
+    await conn.rollback();
+    console.error("POST /ingredients/categories failed:", err.message);
+    res.status(500).json({ message: err?.message || "Failed to create ingredient category" });
+  } finally {
+    conn.release();
+  }
+});
+
+router.get("/", canReadIngredients, async (req, res) => {
   try {
     const cols = await getIngredientColumns();
     const bqCol = baseQtyColumn(cols);
@@ -140,7 +225,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-router.get("/:id/history", async (req, res) => {
+router.get("/:id/history", canReadIngredients, async (req, res) => {
   const ingredientId = Number(req.params.id);
   if (!Number.isFinite(ingredientId) || ingredientId <= 0) {
     return res.status(400).json({ message: "Invalid ingredient id." });
@@ -198,7 +283,7 @@ router.get("/:id/history", async (req, res) => {
   }
 });
 
-router.post("/", async (req, res) => {
+router.post("/", canManageIngredients, async (req, res) => {
   const { ingredient_name, category, base_unit, base_unit_qty, status, quantity } = req.body;
   const bu = (base_unit || "").toString().trim().toLowerCase();
   const packSize = Number(base_unit_qty);
@@ -240,6 +325,7 @@ router.post("/", async (req, res) => {
       if (lastCol) updates.push(`${lastCol}=NOW()`);
 
       await conn.query(`UPDATE ingredients SET ${updates.join(", ")} WHERE id=?`, [...vals, existing[0].id]);
+      await syncCategoryRegistry(conn, category);
       await writeAuditLog(
         {
           ...buildActor(req),
@@ -269,6 +355,7 @@ router.post("/", async (req, res) => {
     }
 
     const [created] = await conn.query(`INSERT INTO ingredients (${fields.join(",")}) VALUES (${placeholders.join(",")})`, vals);
+    await syncCategoryRegistry(conn, category);
     await writeAuditLog(
       {
         ...buildActor(req),
@@ -291,7 +378,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-router.put("/:id", async (req, res) => {
+router.put("/:id", canManageIngredients, async (req, res) => {
   const { id } = req.params;
   const { ingredient_name, category, base_unit, base_unit_qty, status, quantity } = req.body;
   const bu = (base_unit || "").toString().trim().toLowerCase();
@@ -323,15 +410,26 @@ router.put("/:id", async (req, res) => {
   if (hasQty && lastCol) updates.push(`${lastCol}=NOW()`);
 
   try {
-    await pool.query(`UPDATE ingredients SET ${updates.join(", ")} WHERE id=?`, [...vals, id]);
-    await writeAuditLog({
-      ...buildActor(req),
-      module_name: "INGREDIENTS",
-      action_name: "UPDATE",
-      entity_type: "ingredient",
-      entity_id: Number(id),
-      summary: `Updated ingredient ${ingredient_name}.`,
-    });
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      await conn.query(`UPDATE ingredients SET ${updates.join(", ")} WHERE id=?`, [...vals, id]);
+      await syncCategoryRegistry(conn, category);
+      await writeAuditLog({
+        ...buildActor(req),
+        module_name: "INGREDIENTS",
+        action_name: "UPDATE",
+        entity_type: "ingredient",
+        entity_id: Number(id),
+        summary: `Updated ingredient ${ingredient_name}.`,
+      }, conn);
+      await conn.commit();
+    } catch (innerErr) {
+      await conn.rollback();
+      throw innerErr;
+    } finally {
+      conn.release();
+    }
     res.json({ ok: true });
   } catch (err) {
     console.error("PUT /ingredients failed:", err.message);
@@ -339,7 +437,7 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", canManageIngredients, async (req, res) => {
   const { id } = req.params;
   await pool.query("UPDATE ingredients SET status='INACTIVE' WHERE id=?", [id]);
   await writeAuditLog({

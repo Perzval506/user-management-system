@@ -5,8 +5,8 @@ const { requireAuth, requireAnyRole } = require("../middleware/auth");
 const { getColumns, tableExists } = require("../utils/dbIntrospection");
 const { buildActor, writeAuditLog } = require("../utils/auditLog");
 
-// Basic purchases ledger (palengke-style buying)
-router.use(requireAuth, requireAnyRole(["OWNER", "STOCKROOM_STAFF"]));
+// Basic purchases ledger (palengke-style buying) stays owner-controlled.
+router.use(requireAuth, requireAnyRole(["OWNER"]));
 
 function startOfWeek(dateValue) {
   const date = new Date(dateValue);

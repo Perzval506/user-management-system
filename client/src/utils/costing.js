@@ -4,6 +4,13 @@ import { convertQuantity } from "./unitConversion";
 
 const round2 = (n) => Number.parseFloat((Number(n) || 0).toFixed(2));
 
+function packagingCostForOrderType(menuItem = {}) {
+  const orderType = String(menuItem.order_type || "DINE_IN").toUpperCase();
+  if (orderType === "TAKEOUT") return round2(menuItem.takeout_packaging_cost);
+  if (orderType === "DELIVERY") return round2(menuItem.delivery_packaging_cost);
+  return round2(menuItem.dine_in_packaging_cost);
+}
+
 export function calculateIngredientCost(ingredient) {
   const yieldPct = Number(ingredient?.yield_percent) || 0;
   const apCost = Number(ingredient?.ap_cost_per_unit) || 0;
@@ -49,24 +56,30 @@ export function calculatePortions(total_yield_grams, portion_size_grams) {
   return { number_of_portions: round2(portions) };
 }
 
-export function calculatePricing(batch_cost, number_of_portions, target_food_cost_percent) {
+export function calculatePricing(batch_cost, number_of_portions, target_food_cost_percent, packaging_cost_per_portion = 0) {
   const costPerPortion =
     number_of_portions > 0 ? batch_cost / number_of_portions : 0;
+  const totalCostPerPortion = costPerPortion + (Number(packaging_cost_per_portion) || 0);
   const suggestedPrice =
     target_food_cost_percent > 0
-      ? costPerPortion / target_food_cost_percent
+      ? totalCostPerPortion / target_food_cost_percent
       : 0;
   return {
-    cost_per_portion: round2(costPerPortion),
+    food_cost_per_portion: round2(costPerPortion),
+    packaging_cost_per_portion: round2(packaging_cost_per_portion),
+    cost_per_portion: round2(totalCostPerPortion),
     suggested_price: round2(suggestedPrice),
   };
 }
 
 export function evaluateProfitability({
   batch_cost,
+  food_cost_per_portion,
+  packaging_cost_per_portion,
   cost_per_portion,
   suggested_price,
   current_price,
+  order_type,
 }) {
   const currentPrice = Number(current_price) || 0;
   const profitPerPortion = currentPrice - cost_per_portion;
@@ -94,12 +107,15 @@ export function evaluateProfitability({
 
   return {
     batch_cost: round2(batch_cost),
+    food_cost_per_portion: round2(food_cost_per_portion),
+    packaging_cost_per_portion: round2(packaging_cost_per_portion),
     cost_per_portion: round2(cost_per_portion),
     suggested_price: round2(suggested_price),
     current_price: round2(currentPrice),
     profit_per_portion: round2(profitPerPortion),
     actual_food_cost_percent: round2(afcp),
     profit_margin: round2(profitMargin),
+    order_type: String(order_type || "DINE_IN").toUpperCase(),
     status,
     comment,
   };
@@ -108,20 +124,25 @@ export function evaluateProfitability({
 export function computeMenuItemCosting(menuItem = {}) {
   const { items, batch_cost } = calculateBatchCost(menuItem.ingredients || []);
   const hasUnitMismatch = items.some((item) => item.has_unit_mismatch);
+  const packagingCostPerPortion = packagingCostForOrderType(menuItem);
   const { number_of_portions } = calculatePortions(
     menuItem.total_yield_grams,
     menuItem.portion_size_grams
   );
-  const { cost_per_portion, suggested_price } = calculatePricing(
+  const { food_cost_per_portion, packaging_cost_per_portion, cost_per_portion, suggested_price } = calculatePricing(
     batch_cost,
     number_of_portions,
-    menuItem.target_food_cost_percent
+    menuItem.target_food_cost_percent,
+    packagingCostPerPortion
   );
   const profitability = evaluateProfitability({
     batch_cost,
+    food_cost_per_portion,
+    packaging_cost_per_portion,
     cost_per_portion,
     suggested_price,
     current_price: menuItem.current_selling_price,
+    order_type: menuItem.order_type,
   });
   return { ...profitability, items, number_of_portions, has_unit_mismatch: hasUnitMismatch };
 }

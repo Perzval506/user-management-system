@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import api from "../services/api";
 import ConfirmModal from "../components/ConfirmModal";
 import { useToast } from "../components/Toast";
@@ -130,7 +131,20 @@ const ItemRow = React.memo(function ItemRow({ row, onChange, onRemove, ingredien
   );
 });
 
+function makeEditableItem(item = {}) {
+  return {
+    key: item.key || Date.now() + Math.random(),
+    ingredientId: item.ingredient_id || item.ingredientId || null,
+    ingredientName: item.ingredient_name || item.ingredientName || "",
+    brand: item.brand || "",
+    unit: item.unit || "",
+    quantity: item.quantity != null ? String(item.quantity) : "",
+    price: item.price != null ? String(item.price) : "",
+  };
+}
+
 export default function PurchaseOrders() {
+  const navigate = useNavigate();
   const toast = useToast();
   const [storeName, setStoreName] = useState("");
   const [purchaseDate, setPurchaseDate] = useState(todayInput());
@@ -142,6 +156,11 @@ export default function PurchaseOrders() {
   const [detailOrder, setDetailOrder] = useState(null);
   const [detailItems, setDetailItems] = useState([]);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [detailEditing, setDetailEditing] = useState(false);
+  const [detailSaving, setDetailSaving] = useState(false);
+  const [editStoreName, setEditStoreName] = useState("");
+  const [editPurchaseDate, setEditPurchaseDate] = useState(todayInput());
+  const [editItems, setEditItems] = useState([]);
   const [weeklyHistory, setWeeklyHistory] = useState([]);
   const [weeklyTotal, setWeeklyTotal] = useState(0);
   const [deletingOrder, setDeletingOrder] = useState(null);
@@ -263,15 +282,32 @@ export default function PurchaseOrders() {
     submitPurchaseOrder();
   }
 
+  function updateEditRow(key, patch) {
+    setEditItems((current) => current.map((row) => (row.key === key ? { ...row, ...patch } : row)));
+  }
+
+  function removeEditRow(key) {
+    setEditItems((current) => {
+      if (current.length === 1) {
+        return [makeEditableItem()];
+      }
+      return current.filter((row) => row.key !== key);
+    });
+  }
+
   async function openDetails(id) {
     setDetailOpen(true);
     setDetailLoading(true);
+    setDetailEditing(false);
     setDetailOrder(null);
     setDetailItems([]);
     try {
       const res = await api.get(`/purchase-orders/${id}`);
       setDetailOrder(res.data?.order || null);
       setDetailItems(res.data?.items || []);
+      setEditStoreName(res.data?.order?.store_name || "");
+      setEditPurchaseDate(res.data?.order?.purchase_date ? String(res.data.order.purchase_date).slice(0, 10) : todayInput());
+      setEditItems((res.data?.items || []).map((item) => makeEditableItem(item)));
     } catch (error) {
       toast.push({ type: "error", title: "Load failed", message: error?.response?.data?.message || error.message });
       setDetailOpen(false);
@@ -292,6 +328,55 @@ export default function PurchaseOrders() {
       await loadOrders();
     } catch (error) {
       toast.push({ type: "error", title: "Delete failed", message: error?.response?.data?.message || error.message });
+    }
+  }
+
+  async function saveEditedOrder(finalize = false) {
+    if (!detailOrder?.id) return;
+    const relevantItems = editItems.filter((item) =>
+      item.ingredientId || String(item.ingredientName || "").trim() || String(item.brand || "").trim() || String(item.unit || "").trim() || String(item.quantity || "").trim() || String(item.price || "").trim()
+    );
+    if (!editStoreName.trim()) {
+      return toast.push({ type: "error", title: "Missing store", message: "Store name is required." });
+    }
+    if (!relevantItems.length) {
+      return toast.push({ type: "error", title: "Missing items", message: "Add at least one completed item." });
+    }
+
+    for (let index = 0; index < relevantItems.length; index += 1) {
+      const item = relevantItems[index];
+      if (!item.ingredientId) return toast.push({ type: "error", title: "Missing ingredient", message: `Item ${index + 1} needs an ingredient.` });
+      if (!String(item.unit || "").trim()) return toast.push({ type: "error", title: "Missing unit", message: `Item ${index + 1} needs a unit.` });
+      if (!isFinite(Number(item.quantity)) || Number(item.quantity) <= 0) return toast.push({ type: "error", title: "Invalid quantity", message: `Item ${index + 1} needs a quantity greater than 0.` });
+      if (!isFinite(Number(item.price)) || Number(item.price) < 0) return toast.push({ type: "error", title: "Invalid unit price", message: `Item ${index + 1} needs a unit price of 0 or more.` });
+    }
+
+    setDetailSaving(true);
+    try {
+      await api.put(`/purchase-orders/${detailOrder.id}`, {
+        storeName: editStoreName.trim(),
+        purchaseDate: editPurchaseDate,
+        finalize,
+        items: relevantItems.map((item) => ({
+          ingredientId: item.ingredientId,
+          ingredientName: item.ingredientName,
+          brand: item.brand,
+          unit: item.unit,
+          quantity: round2(item.quantity || 0),
+          price: round2(item.price || 0),
+        })),
+      });
+      toast.push({
+        type: "success",
+        title: finalize ? "Purchase order finalized" : "Purchase order updated",
+        message: finalize ? "Inventory was posted from this purchase order." : "Purchase order draft updated.",
+      });
+      await openDetails(detailOrder.id);
+      await loadOrders();
+    } catch (error) {
+      toast.push({ type: "error", title: finalize ? "Finalize failed" : "Save failed", message: error?.response?.data?.message || error.message });
+    } finally {
+      setDetailSaving(false);
     }
   }
 
@@ -395,7 +480,16 @@ export default function PurchaseOrders() {
                   <td>{formatDateLong(order.purchase_date)}</td>
                   <td>{order.item_count || 0}</td>
                   <td className="text-right mono">{formatMoney(order.total_amount)}</td>
-                  <td>{formatDateTimeFriendly(order.created_at)}</td>
+                  <td>
+                    <div>{formatDateTimeFriendly(order.created_at)}</div>
+                    {order.purchase_request_id ? (
+                      <div style={{ color: "#6B7280" }}>
+                        PR #{order.purchase_request_id}
+                        {order.catering_order_id ? ` | Catering #${order.catering_order_id}` : ""}
+                      </div>
+                    ) : null}
+                    {order.inventory_posted_at ? <div style={{ color: "#16A34A" }}>Posted</div> : <div style={{ color: "#B45309" }}>Draft</div>}
+                  </td>
                   <td>
                     <div className="rowActions">
                       <button className="btn btn-ghost" onClick={() => openDetails(order.id)}>View</button>
@@ -451,41 +545,111 @@ export default function PurchaseOrders() {
                   </div>
                 )}
               </div>
-              <button className="btn btn-ghost" onClick={() => setDetailOpen(false)}>X</button>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                {detailOrder?.purchase_request_id ? (
+                  <button type="button" className="btn btn-ghost" onClick={() => navigate("/admin/purchase-requests")}>
+                    PR #{detailOrder.purchase_request_id}
+                  </button>
+                ) : null}
+                {detailOrder?.catering_order_id ? (
+                  <button type="button" className="btn btn-ghost" onClick={() => navigate("/admin/catering-orders")}>
+                    Catering #{detailOrder.catering_order_id}
+                  </button>
+                ) : null}
+                {!detailOrder?.inventory_posted_at ? (
+                  <button className="btn btn-ghost" onClick={() => setDetailEditing((current) => !current)}>
+                    {detailEditing ? "View Mode" : "Edit Draft"}
+                  </button>
+                ) : null}
+                <button className="btn btn-ghost" onClick={() => setDetailOpen(false)}>X</button>
+              </div>
             </div>
 
             {detailLoading ? (
               <div style={{ padding: 12 }}>Loading...</div>
             ) : (
-              <div style={{ overflowX: "auto", marginTop: 12 }}>
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Ingredient</th>
-                      <th>Brand</th>
-                      <th>Unit</th>
-                      <th className="text-right">Quantity</th>
-                      <th className="text-right">Unit Price</th>
-                      <th className="text-right">Subtotal</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {detailItems.map((item) => (
-                      <tr key={item.id}>
-                        <td>{item.ingredient_name ? String(item.ingredient_name).toUpperCase() : "-"}</td>
-                        <td>{item.brand || "-"}</td>
-                        <td>{item.unit || "-"}</td>
-                        <td className="text-right mono">{round2(item.quantity || 0).toFixed(2)}</td>
-                        <td className="text-right mono">{formatMoney(item.price || 0)}</td>
-                        <td className="text-right mono">{formatMoney(item.subtotal || 0)}</td>
-                      </tr>
-                    ))}
-                    {detailItems.length === 0 && (
-                      <tr><td colSpan="6" style={{ padding: 12, opacity: 0.7 }}>No items found.</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginTop: 12, marginBottom: 12 }}>
+                  <DetailCell label="Store" value={detailOrder?.store_name || "-"} />
+                  <DetailCell label="Purchase Date" value={detailOrder?.purchase_date ? formatDateLong(detailOrder.purchase_date) : "-"} />
+                  <DetailCell label="Status" value={detailOrder?.inventory_posted_at ? "POSTED TO INVENTORY" : "DRAFT"} />
+                  <DetailCell label="Total" value={formatMoney(detailOrder?.total_amount || 0)} />
+                </div>
+
+                {detailEditing && !detailOrder?.inventory_posted_at ? (
+                  <>
+                    <div className="formGrid">
+                      <div>
+                        <label>Store Name</label>
+                        <input className="input" value={editStoreName} onChange={(event) => setEditStoreName(event.target.value)} />
+                      </div>
+                      <div>
+                        <label>Purchase Date</label>
+                        <input className="input" type="date" value={editPurchaseDate} onChange={(event) => setEditPurchaseDate(event.target.value)} />
+                      </div>
+                    </div>
+                    <div style={{ overflowX: "auto", marginTop: 12 }}>
+                      <table className="table">
+                        <thead>
+                          <tr>
+                            <th>Ingredient</th>
+                            <th>Brand</th>
+                            <th>Unit</th>
+                            <th className="text-right">Quantity</th>
+                            <th className="text-right">Unit Price</th>
+                            <th className="text-right">Subtotal</th>
+                            <th></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {editItems.map((row) => (
+                            <ItemRow key={row.key} row={row} onChange={updateEditRow} onRemove={removeEditRow} ingredients={ingredients} />
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
+                      <button type="button" className="btn" onClick={() => setEditItems((current) => [...current, makeEditableItem()])}>Add item</button>
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                        <button type="button" className="btn btn-ghost" disabled={detailSaving} onClick={() => saveEditedOrder(false)}>Save Draft</button>
+                        <button type="button" className="btn btn-primary" disabled={detailSaving} onClick={() => saveEditedOrder(true)}>
+                          {detailSaving ? "Saving..." : "Finalize & Post Inventory"}
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ overflowX: "auto", marginTop: 12 }}>
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>Ingredient</th>
+                          <th>Brand</th>
+                          <th>Unit</th>
+                          <th className="text-right">Quantity</th>
+                          <th className="text-right">Unit Price</th>
+                          <th className="text-right">Subtotal</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {detailItems.map((item) => (
+                          <tr key={item.id}>
+                            <td>{item.ingredient_name ? String(item.ingredient_name).toUpperCase() : "-"}</td>
+                            <td>{item.brand || "-"}</td>
+                            <td>{item.unit || "-"}</td>
+                            <td className="text-right mono">{round2(item.quantity || 0).toFixed(2)}</td>
+                            <td className="text-right mono">{formatMoney(item.price || 0)}</td>
+                            <td className="text-right mono">{formatMoney(item.subtotal || 0)}</td>
+                          </tr>
+                        ))}
+                        {detailItems.length === 0 && (
+                          <tr><td colSpan="6" style={{ padding: 12, opacity: 0.7 }}>No items found.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>

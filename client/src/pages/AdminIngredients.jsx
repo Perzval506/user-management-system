@@ -30,6 +30,10 @@ export default function AdminIngredients() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyData, setHistoryData] = useState({ ingredient: null, history: [] });
+  const [categories, setCategories] = useState([]);
+  const [categoryOpen, setCategoryOpen] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [savingCategory, setSavingCategory] = useState(false);
 
   const units = useUnits();
 
@@ -49,8 +53,12 @@ export default function AdminIngredients() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get("/ingredients");
-      setItems(res.data || []);
+      const [ingredientsRes, categoriesRes] = await Promise.all([
+        api.get("/ingredients"),
+        api.get("/ingredients/categories"),
+      ]);
+      setItems(ingredientsRes.data || []);
+      setCategories((categoriesRes.data || []).map((row) => String(row.category_name || "").trim()).filter(Boolean));
     } catch (e) {
       toast.push({
         type: "error",
@@ -110,8 +118,38 @@ export default function AdminIngredients() {
     setForm(emptyForm);
   }
 
+  function closeCategoryModal() {
+    setCategoryOpen(false);
+    setNewCategoryName("");
+    setSavingCategory(false);
+  }
+
   function onChange(event) {
     setForm((previous) => ({ ...previous, [event.target.name]: event.target.value }));
+  }
+
+  async function submitCategory() {
+    const categoryName = newCategoryName.trim();
+    if (!categoryName) {
+      return toast.push({ type: "error", title: "Missing field", message: "Category name is required." });
+    }
+
+    setSavingCategory(true);
+    try {
+      await api.post("/ingredients/categories", { category_name: categoryName });
+      setCategories((previous) => Array.from(new Set([...previous, categoryName])).sort((a, b) => a.localeCompare(b)));
+      setForm((previous) => ({ ...previous, category: categoryName }));
+      toast.push({ type: "success", title: "Saved", message: "Ingredient category created." });
+      closeCategoryModal();
+    } catch (error) {
+      toast.push({
+        type: "error",
+        title: "Save failed",
+        message: error?.response?.data?.message || error.message || "Failed to create category",
+      });
+    } finally {
+      setSavingCategory(false);
+    }
   }
 
   async function submitForm() {
@@ -356,7 +394,19 @@ export default function AdminIngredients() {
 
               <div>
                 <label>Category</label>
-                <input name="category" value={form.category} onChange={onChange} className="input" placeholder="e.g., Baking" />
+                <div className="formRow2" style={{ alignItems: "end" }}>
+                  <select name="category" value={form.category} onChange={onChange} className="input">
+                    <option value="">-- select category --</option>
+                    {categories.map((category) => (
+                      <option key={category} value={category}>
+                        {category}
+                      </option>
+                    ))}
+                  </select>
+                  <button type="button" className="btn" onClick={() => setCategoryOpen(true)}>
+                    Add Category
+                  </button>
+                </div>
               </div>
 
               <div>
@@ -396,6 +446,34 @@ export default function AdminIngredients() {
                 <button type="button" className="btn btn-primary" onClick={submitForm}>{mode === "create" ? "Create" : "Save"}</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {categoryOpen && (
+        <div style={modalBackdrop} onClick={closeCategoryModal}>
+          <div style={modalCardSmall} onClick={(event) => event.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+              <h3 style={{ margin: 0 }}>Create Category</h3>
+              <button className="btn btn-ghost" onClick={closeCategoryModal}>X</button>
+            </div>
+
+            <div className="formGrid" style={{ marginTop: 14 }}>
+              <div>
+                <label>Category name</label>
+                <input
+                  className="input"
+                  value={newCategoryName}
+                  onChange={(event) => setNewCategoryName(event.target.value)}
+                  placeholder="e.g., TAKE OUT CONTAINERS"
+                />
+              </div>
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                <button type="button" className="btn btn-ghost" onClick={closeCategoryModal}>Cancel</button>
+                <button type="button" className="btn btn-primary" onClick={submitCategory} disabled={savingCategory}>
+                  {savingCategory ? "Saving..." : "Create Category"}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -458,3 +536,4 @@ export default function AdminIngredients() {
 
 const modalBackdrop = { position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.24)", display: "grid", placeItems: "center", padding: 12, zIndex: 200000 };
 const modalCard = { width: "min(720px, 100%)", background: "white", borderRadius: 14, padding: 16, boxShadow: "0 18px 60px rgba(0,0,0,0.35)" };
+const modalCardSmall = { width: "min(520px, 100%)", background: "white", borderRadius: 14, padding: 16, boxShadow: "0 18px 60px rgba(0,0,0,0.35)" };
