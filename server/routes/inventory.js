@@ -179,6 +179,45 @@ router.get("/weekly-review", async (_req, res) => {
   }
 });
 
+router.get("/movements", async (req, res) => {
+  try {
+    if (!(await tableExists("inventory_movements"))) {
+      return res.json([]);
+    }
+
+    const ingredientId = Number(req.query.ingredientId || 0);
+    const limit = Math.min(Math.max(Number(req.query.limit || 30), 1), 100);
+    const where = Number.isFinite(ingredientId) && ingredientId > 0 ? "WHERE im.ingredient_id = ?" : "";
+    const params = Number.isFinite(ingredientId) && ingredientId > 0 ? [ingredientId, limit] : [limit];
+    const [rows] = await pool.query(
+      `SELECT im.id,
+              im.ingredient_id,
+              i.ingredient_name,
+              im.movement_type,
+              im.quantity_change,
+              im.resulting_quantity,
+              im.unit,
+              im.source_module,
+              im.reference_type,
+              im.reference_id,
+              im.notes,
+              im.created_at,
+              u.full_name AS created_by_name
+         FROM inventory_movements im
+         JOIN ingredients i ON i.id = im.ingredient_id
+         LEFT JOIN users u ON u.id = im.created_by_user_id
+         ${where}
+        ORDER BY im.created_at DESC, im.id DESC
+        LIMIT ?`,
+      params
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("GET /inventory/movements failed:", err.message);
+    res.status(500).json({ message: "Failed to fetch inventory movements" });
+  }
+});
+
 function round2(value) {
   return Number(Number(value || 0).toFixed(2));
 }

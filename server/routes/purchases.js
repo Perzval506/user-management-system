@@ -4,6 +4,7 @@ const router = express.Router();
 const { requireAuth, requireAnyRole } = require("../middleware/auth");
 const { getColumns, tableExists } = require("../utils/dbIntrospection");
 const { buildActor, writeAuditLog } = require("../utils/auditLog");
+const { writeInventoryMovement } = require("../utils/inventoryMovements");
 
 // Basic purchases ledger (palengke-style buying) stays owner-controlled.
 router.use(requireAuth, requireAnyRole(["OWNER"]));
@@ -114,6 +115,24 @@ router.post("/", async (req, res) => {
       values.push(ingredient.id);
       await conn.query(`UPDATE ingredients SET ${updates.join(", ")} WHERE id=?`, values);
     }
+    const nextQty = hasQuantity ? qty + Number(ingredient.quantity || 0) : null;
+    if (hasQuantity) {
+      await writeInventoryMovement(
+        {
+          ingredient_id: ingredient.id,
+          movement_type: "PURCHASE_IN",
+          quantity_change: qty,
+          resulting_quantity: nextQty,
+          unit: null,
+          source_module: "PURCHASES",
+          reference_type: "purchase",
+          reference_id: result.insertId,
+          notes: `Quick purchase recorded for ${String(ingredient.ingredient_name || "").trim().toUpperCase()}.`,
+          created_by_user_id: req.user?.id || null,
+        },
+        conn
+      );
+    }
 
     await writeAuditLog(
       {
@@ -172,6 +191,21 @@ router.delete("/:id", async (req, res) => {
           reversalQty,
           ingredient.id,
         ]);
+        await writeInventoryMovement(
+          {
+            ingredient_id: ingredient.id,
+            movement_type: "PURCHASE_DELETE_OUT",
+            quantity_change: -reversalQty,
+            resulting_quantity: currentQty - reversalQty,
+            unit: null,
+            source_module: "PURCHASES",
+            reference_type: "purchase",
+            reference_id: purchaseId,
+            notes: `Quick purchase deletion reversed stock for ${purchase.ingredient_name}.`,
+            created_by_user_id: req.user?.id || null,
+          },
+          conn
+        );
       }
     }
 

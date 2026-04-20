@@ -4,6 +4,7 @@ const { requireAuth, requireAnyRole } = require("../middleware/auth");
 const { tableExists, getColumns } = require("../utils/dbIntrospection");
 const { buildActor, writeAuditLog } = require("../utils/auditLog");
 const { convertQuantity } = require("../utils/unitConversion");
+const { writeInventoryMovement } = require("../utils/inventoryMovements");
 
 const router = express.Router();
 
@@ -484,6 +485,21 @@ router.post("/", async (req, res) => {
         usage.qtyUsedBaseUnit,
         Number(ingredientId),
       ]);
+      await writeInventoryMovement(
+        {
+          ingredient_id: Number(ingredientId),
+          movement_type: "SALE_OUT",
+          quantity_change: -usage.qtyUsedBaseUnit,
+          resulting_quantity: Number(usage.currentStock || 0) - usage.qtyUsedBaseUnit,
+          unit: usage.baseUnit || null,
+          source_module: "SALES",
+          reference_type: "sales_transaction",
+          reference_id: txId,
+          notes: `Sale #${txId} consumed inventory for ${usage.ingredientName}.`,
+          created_by_user_id: req.user?.id || null,
+        },
+        conn
+      );
     }
 
     await writeAuditLog(
@@ -541,9 +557,10 @@ router.patch("/:id/void", async (req, res) => {
     }
 
     const [usageRows] = await conn.query(
-      `SELECT siiu.ingredient_id, siiu.qty_used_base_unit
+      `SELECT siiu.ingredient_id, siiu.qty_used_base_unit, siiu.base_unit, i.ingredient_name, i.quantity
          FROM sales_item_inventory_usage siiu
          JOIN sales_items si ON si.id = siiu.sales_item_id
+         JOIN ingredients i ON i.id = siiu.ingredient_id
         WHERE si.sales_transaction_id = ?`,
       [saleId]
     );
@@ -557,6 +574,21 @@ router.patch("/:id/void", async (req, res) => {
         Number(usage.qty_used_base_unit || 0),
         usage.ingredient_id,
       ]);
+      await writeInventoryMovement(
+        {
+          ingredient_id: usage.ingredient_id,
+          movement_type: "SALE_VOID_IN",
+          quantity_change: Number(usage.qty_used_base_unit || 0),
+          resulting_quantity: Number(usage.quantity || 0) + Number(usage.qty_used_base_unit || 0),
+          unit: usage.base_unit || null,
+          source_module: "SALES",
+          reference_type: "sales_transaction",
+          reference_id: saleId,
+          notes: `Voided sale #${saleId} and restored inventory for ${usage.ingredient_name}.`,
+          created_by_user_id: req.user?.id || null,
+        },
+        conn
+      );
     }
 
     await conn.query("UPDATE sales_transactions SET status='VOIDED' WHERE id=?", [saleId]);

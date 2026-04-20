@@ -3,6 +3,7 @@ const pool = require("../db");
 const { requireAuth, requireRole } = require("../middleware/auth");
 const { getColumns } = require("../utils/dbIntrospection");
 const { buildActor, writeAuditLog } = require("../utils/auditLog");
+const { computeMenuItemCosting } = require("../utils/costing");
 const router = express.Router();
 
 const MENU_STATUSES = new Set(["ACTIVE", "INACTIVE"]);
@@ -123,20 +124,156 @@ async function createRecipeAndVersion(conn, {
 
   return { recipeId, recipeVersionId: versionResult.insertId };
 }
+
+async function getCurrentPriceMap(connOrPool) {
+  const [rows] = await connOrPool.query(
+    `SELECT mph.menu_item_id, mph.selling_price, mph.effective_date
+       FROM menu_price_history mph
+       JOIN (
+         SELECT menu_item_id, MAX(CONCAT(effective_date, '-', LPAD(id, 10, '0'))) AS latest_key
+           FROM menu_price_history
+          GROUP BY menu_item_id
+       ) latest ON latest.menu_item_id = mph.menu_item_id
+               AND CONCAT(mph.effective_date, '-', LPAD(mph.id, 10, '0')) = latest.latest_key`
+  );
+  return rows.reduce((acc, row) => {
+    acc[row.menu_item_id] = row;
+    return acc;
+  }, {});
+}
+
+async function buildMenuCostingDetails(connOrPool, menuItem) {
+  if (!menuItem?.recipe_version_id) return null;
+
+  const ingredientCols = await getColumns("ingredients");
+  const hasCurrentApCost = Boolean(ingredientCols.current_ap_cost);
+  const apCostSelect = hasCurrentApCost ? ", i.current_ap_cost" : ", NULL AS current_ap_cost";
+  const [ingredients] = await connOrPool.query(
+    `SELECT ri.ingredient_id, ri.qty_used, ri.qty_unit, ri.price, ri.yield_percent,
+            i.ingredient_name, i.base_unit${apCostSelect}
+       FROM recipe_ingredients ri
+       JOIN ingredients i ON i.id = ri.ingredient_id
+      WHERE ri.recipe_version_id = ?`,
+    [menuItem.recipe_version_id]
+  );
+
+  const ingredientPayload = ingredients.map((line) => ({
+    ingredient_id: line.ingredient_id,
+    ingredient_name: line.ingredient_name,
+    quantity_used: Number(line.qty_used || 0),
+    quantity_unit: line.qty_unit,
+    base_unit: line.base_unit,
+    ap_cost_per_unit:
+      line.price !== null && typeof line.price !== "undefined"
+        ? Number(line.price || 0)
+        : Number(line.current_ap_cost || 0),
+    uses_manual_unit_cost: line.price !== null && typeof line.price !== "undefined",
+    yield_percent:
+      line.yield_percent !== null && typeof line.yield_percent !== "undefined"
+        ? Number(line.yield_percent || 0)
+        : 100,
+  }));
+
+  const costing = computeMenuItemCosting({
+    ingredients: ingredientPayload,
+    total_yield_grams: Number(menuItem.yield_amount || 0),
+    portion_size_grams: Number(menuItem.portion_size || 0),
+    target_food_cost_percent: Number(menuItem.target_food_cost_percent || 0),
+    current_selling_price: Number(menuItem.selling_price || 0),
+    order_type: "DINE_IN",
+    dine_in_packaging_cost: Number(menuItem.dine_in_packaging_cost || 0),
+    takeout_packaging_cost: Number(menuItem.takeout_packaging_cost || 0),
+    delivery_packaging_cost: Number(menuItem.delivery_packaging_cost || 0),
+  });
+
+  return {
+    ingredients: costing.items,
+    costing,
+  };
+}
+
 // GET list with latest price (by effective_date)
 router.get("/", async (req, res) => {
   try {
-    const sql = `SELECT m.*, ph.selling_price, ph.effective_date
+    const sql = `SELECT m.*, rv.yield_amount, rv.yield_unit, rv.portion_size, rv.portion_unit
       FROM menu_items m
-      LEFT JOIN menu_price_history ph ON ph.id = (
-        SELECT id FROM menu_price_history WHERE menu_item_id = m.id ORDER BY effective_date DESC LIMIT 1
-      )
+      LEFT JOIN recipe_versions rv ON rv.id = m.recipe_version_id
       ORDER BY m.menu_name ASC`;
     const [rows] = await pool.query(sql);
-    res.json(rows);
+    const currentPriceMap = await getCurrentPriceMap(pool);
+    const enriched = await Promise.all(
+      rows.map(async (row) => {
+        const currentPrice = currentPriceMap[row.id] || null;
+        const baseRow = {
+          ...row,
+          selling_price: currentPrice?.selling_price ?? null,
+          effective_date: currentPrice?.effective_date ?? null,
+        };
+        const costingDetails = await buildMenuCostingDetails(pool, baseRow);
+        if (!costingDetails) {
+          return {
+            ...baseRow,
+            costing_status: "No Recipe",
+            suggested_price: null,
+            cost_per_portion: null,
+            profit_per_portion: null,
+            profit_margin: null,
+            actual_food_cost_percent: null,
+            number_of_portions: null,
+            has_unit_mismatch: false,
+          };
+        }
+        return {
+          ...baseRow,
+          costing_status: costingDetails.costing.status,
+          suggested_price: costingDetails.costing.suggested_price,
+          cost_per_portion: costingDetails.costing.cost_per_portion,
+          profit_per_portion: costingDetails.costing.profit_per_portion,
+          profit_margin: costingDetails.costing.profit_margin,
+          actual_food_cost_percent: costingDetails.costing.actual_food_cost_percent,
+          number_of_portions: costingDetails.costing.number_of_portions,
+          has_unit_mismatch: costingDetails.costing.has_unit_mismatch,
+        };
+      })
+    );
+    res.json(enriched);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to fetch menu items' });
+  }
+});
+
+router.get("/:id/costing-report", requireAuth, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const currentPriceMap = await getCurrentPriceMap(pool);
+    const [[menu]] = await pool.query(
+      `SELECT m.*, rv.yield_amount, rv.yield_unit, rv.portion_size, rv.portion_unit, r.recipe_name, r.description AS recipe_description
+         FROM menu_items m
+         LEFT JOIN recipe_versions rv ON rv.id = m.recipe_version_id
+         LEFT JOIN recipes r ON r.id = rv.recipe_id
+        WHERE m.id = ?`,
+      [id]
+    );
+    if (!menu) return res.status(404).json({ error: "Menu item not found" });
+    const currentPrice = currentPriceMap[menu.id] || null;
+    const menuWithPrice = {
+      ...menu,
+      selling_price: currentPrice?.selling_price ?? null,
+      effective_date: currentPrice?.effective_date ?? null,
+    };
+    const costingDetails = await buildMenuCostingDetails(pool, menuWithPrice);
+    res.json({
+      menu: menuWithPrice,
+      recipe_name: menu.recipe_name || menu.menu_name,
+      recipe_description: menu.recipe_description || null,
+      costing: costingDetails?.costing || null,
+      ingredients: costingDetails?.ingredients || [],
+      generated_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error("GET /menu/:id/costing-report failed:", err.message);
+    res.status(500).json({ error: "Failed to fetch costing report" });
   }
 });
 

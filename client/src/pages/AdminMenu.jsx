@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import api from "../services/api";
 import RecipeBuilder from "../components/RecipeBuilder";
 import { useToast } from "../components/Toast";
-import { formatMoney } from "../utils/formatters";
+import { formatDateLong, formatMoney, formatNumber } from "../utils/formatters";
 
 const emptyForm = {
   menu_name: "",
@@ -42,6 +42,17 @@ export default function AdminMenu() {
     recipe_name: "",
     recipe_description: "",
   });
+
+  const profitabilitySummary = useMemo(() => {
+    return items.reduce(
+      (acc, item) => {
+        if (item.costing_status === "Loss") acc.loss += 1;
+        if (item.costing_status === "Low Profit") acc.low += 1;
+        return acc;
+      },
+      { loss: 0, low: 0 }
+    );
+  }, [items]);
 
   const visibleItems = useMemo(() => {
     if (showInactive) return items;
@@ -374,6 +385,152 @@ export default function AdminMenu() {
     }
   }
 
+  async function printCostingReport() {
+    if (!editingItem) return;
+    try {
+      const response = await api.get(`/menu/${editingItem.id}/costing-report`);
+      const report = response.data;
+      if (!report?.costing) {
+        toast.push({
+          type: "error",
+          title: "Report unavailable",
+          message: "Create and save a recipe first so the costing report has data to print.",
+        });
+        return;
+      }
+
+      const popup = window.open("", "_blank", "width=980,height=760");
+      if (!popup) {
+        toast.push({
+          type: "error",
+          title: "Popup blocked",
+          message: "Allow popups so the costing report can open.",
+        });
+        return;
+      }
+
+      const ingredientRows = (report.ingredients || [])
+        .map(
+          (line) => `
+            <tr>
+              <td>${escapeHtml(line.ingredient_name || "-")}</td>
+              <td style="text-align:right">${escapeHtml(formatNumber(line.quantity_used || 0))}</td>
+              <td>${escapeHtml(line.quantity_unit || "-")}</td>
+              <td style="text-align:right">${escapeHtml(formatMoney(line.ap_cost_per_unit || 0))}</td>
+              <td style="text-align:right">${escapeHtml(formatMoney(line.ingredient_cost || 0))}</td>
+            </tr>`
+        )
+        .join("");
+
+      popup.document.write(`<!DOCTYPE html>
+        <html>
+          <head>
+            <title>Costing Report - ${escapeHtml(report.menu?.menu_name || "Menu Item")}</title>
+            <style>
+              body { font-family: Arial, sans-serif; margin: 24px; color: #111827; }
+              h1, h2 { margin: 0 0 8px; }
+              .meta { color: #4b5563; margin-bottom: 18px; }
+              .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 18px; }
+              .card { border: 1px solid #d1d5db; border-radius: 10px; padding: 12px; }
+              .label { color: #6b7280; font-size: 12px; margin-bottom: 6px; }
+              .value { font-size: 18px; font-weight: 800; }
+              table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+              th, td { border: 1px solid #d1d5db; padding: 8px; font-size: 12px; }
+              th { background: #f3f4f6; text-align: left; }
+            </style>
+          </head>
+          <body>
+            <h1>Costing Report</h1>
+            <div class="meta">
+              ${escapeHtml(report.menu?.menu_name || "-")} | Recipe: ${escapeHtml(report.recipe_name || "-")} | Generated ${escapeHtml(formatDateLong(report.generated_at))}
+            </div>
+            <div class="cards">
+              <div class="card"><div class="label">Current price</div><div class="value">${escapeHtml(formatMoney(report.menu?.selling_price || 0))}</div></div>
+              <div class="card"><div class="label">Suggested price</div><div class="value">${escapeHtml(formatMoney(report.costing?.suggested_price || 0))}</div></div>
+              <div class="card"><div class="label">Costing status</div><div class="value">${escapeHtml(report.costing?.status || "-")}</div></div>
+              <div class="card"><div class="label">Cost per portion</div><div class="value">${escapeHtml(formatMoney(report.costing?.cost_per_portion || 0))}</div></div>
+              <div class="card"><div class="label">Profit per portion</div><div class="value">${escapeHtml(formatMoney(report.costing?.profit_per_portion || 0))}</div></div>
+              <div class="card"><div class="label">Margin</div><div class="value">${escapeHtml(formatNumber((report.costing?.profit_margin || 0) * 100))}%</div></div>
+            </div>
+            <h2>Ingredient Lines</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Ingredient</th>
+                  <th style="text-align:right">Qty used</th>
+                  <th>Unit</th>
+                  <th style="text-align:right">Unit cost</th>
+                  <th style="text-align:right">Line cost</th>
+                </tr>
+              </thead>
+              <tbody>${ingredientRows || '<tr><td colspan="5">No recipe ingredients saved yet.</td></tr>'}</tbody>
+            </table>
+          </body>
+        </html>`);
+      popup.document.close();
+      popup.focus();
+      popup.print();
+    } catch (error) {
+      toast.push({
+        type: "error",
+        title: "Report failed",
+        message: error?.response?.data?.error || error.message || "Failed to load costing report.",
+      });
+    }
+  }
+
+  async function exportCostingCsv() {
+    if (!editingItem) return;
+    try {
+      const response = await api.get(`/menu/${editingItem.id}/costing-report`);
+      const report = response.data;
+      if (!report?.costing) {
+        toast.push({
+          type: "error",
+          title: "Export unavailable",
+          message: "Create and save a recipe first so the costing report has data to export.",
+        });
+        return;
+      }
+
+      const lines = [
+        ["Menu Item", report.menu?.menu_name || ""],
+        ["Recipe", report.recipe_name || ""],
+        ["Current Price", formatMoney(report.menu?.selling_price || 0)],
+        ["Suggested Price", formatMoney(report.costing?.suggested_price || 0)],
+        ["Cost Per Portion", formatMoney(report.costing?.cost_per_portion || 0)],
+        ["Profit Per Portion", formatMoney(report.costing?.profit_per_portion || 0)],
+        ["Profit Margin", `${formatNumber((report.costing?.profit_margin || 0) * 100)}%`],
+        [],
+        ["Ingredient", "Qty Used", "Unit", "Unit Cost", "Line Cost"],
+        ...(report.ingredients || []).map((line) => [
+          line.ingredient_name || "",
+          formatNumber(line.quantity_used || 0),
+          line.quantity_unit || "",
+          formatMoney(line.ap_cost_per_unit || 0),
+          formatMoney(line.ingredient_cost || 0),
+        ]),
+      ];
+      const csv = lines
+        .map((row) => row.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(","))
+        .join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${(report.menu?.menu_name || "costing-report").replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.push({ type: "success", title: "Exported", message: "Costing report CSV downloaded." });
+    } catch (error) {
+      toast.push({
+        type: "error",
+        title: "Export failed",
+        message: error?.response?.data?.error || error.message || "Failed to export costing report.",
+      });
+    }
+  }
+
   const editingId = editingItem?.id || null;
   const hasRecipe = Boolean(editingItem?.recipe_version_id);
 
@@ -382,7 +539,7 @@ export default function AdminMenu() {
       <div className="pageHeader">
         <div>
           <h2 className="pageTitle">Menu Management</h2>
-          <div className="pageSub">Manage menu items and recipes.</div>
+          <div className="pageSub">Manage menu items, recipes, and profitability signals from one place.</div>
         </div>
 
         <div className="pageActions">
@@ -392,6 +549,17 @@ export default function AdminMenu() {
           <button className="btn btn-primary" onClick={openCreate}>
             Create Menu Item
           </button>
+        </div>
+      </div>
+
+      <div className="dashboardStatGrid dashboardStatGridOwnerPrimary" style={{ marginBottom: 14 }}>
+        <div className="dashboardMetricCard">
+          <div className="dashboardMetricLabel">Loss items</div>
+          <div className="dashboardMetricValue">{profitabilitySummary.loss}</div>
+        </div>
+        <div className="dashboardMetricCard">
+          <div className="dashboardMetricLabel">Low-profit items</div>
+          <div className="dashboardMetricValue">{profitabilitySummary.low}</div>
         </div>
       </div>
 
@@ -422,6 +590,10 @@ export default function AdminMenu() {
                   <th>Recipe</th>
                   <th>Status</th>
                   <th className="text-right">Price</th>
+                  <th className="text-right">Cost</th>
+                  <th className="text-right">Suggested</th>
+                  <th className="text-right">Margin</th>
+                  <th>Profitability</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -449,6 +621,14 @@ export default function AdminMenu() {
                       </span>
                     </td>
                     <td className="text-right mono">{row.selling_price != null ? formatMoney(row.selling_price) : "-"}</td>
+                    <td className="text-right mono">{row.cost_per_portion != null ? formatMoney(row.cost_per_portion) : "-"}</td>
+                    <td className="text-right mono">{row.suggested_price != null ? formatMoney(row.suggested_price) : "-"}</td>
+                    <td className="text-right mono">{row.profit_margin != null ? `${formatNumber((row.profit_margin || 0) * 100)}%` : "-"}</td>
+                    <td>
+                      <span className={`badge ${profitabilityBadgeClass(row.costing_status)}`}>
+                        {row.costing_status || "No data"}
+                      </span>
+                    </td>
 
                     <td>
                       <div className="rowActions">
@@ -480,7 +660,7 @@ export default function AdminMenu() {
 
                 {visibleItems.length === 0 && (
                   <tr>
-                    <td colSpan="7" className="tableEmpty">
+                    <td colSpan="11" className="tableEmpty">
                       No menu items found.
                     </td>
                   </tr>
@@ -674,6 +854,30 @@ export default function AdminMenu() {
                   </div>
                 </div>
 
+                <div className="formRow3">
+                  <div className="card">
+                    <div className="inventoryReviewStatLabel">Estimated cost</div>
+                    <div className="inventoryReviewStatValue">
+                      {editingItem?.cost_per_portion != null ? formatMoney(editingItem.cost_per_portion) : "-"}
+                    </div>
+                  </div>
+                  <div className="card">
+                    <div className="inventoryReviewStatLabel">Suggested price</div>
+                    <div className="inventoryReviewStatValue">
+                      {editingItem?.suggested_price != null ? formatMoney(editingItem.suggested_price) : "-"}
+                    </div>
+                  </div>
+                  <div className="card">
+                    <div className="inventoryReviewStatLabel">Profitability</div>
+                    <div className="inventoryReviewStatValue" style={{ fontSize: 18 }}>
+                      {editingItem?.costing_status || "No data"}
+                    </div>
+                    <div className="inventoryReviewStatMeta">
+                      {editingItem?.profit_margin != null ? `Margin ${formatNumber((editingItem.profit_margin || 0) * 100)}%` : "Save a recipe to calculate this"}
+                    </div>
+                  </div>
+                </div>
+
                 <div>
                   <label>New selling price</label>
                   <input
@@ -757,6 +961,12 @@ export default function AdminMenu() {
                 </div>
 
                 <div className="formActions">
+                  <button className="btn" onClick={printCostingReport} type="button">
+                    Print Costing Report
+                  </button>
+                  <button className="btn" onClick={exportCostingCsv} type="button">
+                    Export CSV
+                  </button>
                   <button className="btn btn-ghost" onClick={closeModal}>
                     Close
                   </button>
@@ -841,4 +1051,20 @@ export default function AdminMenu() {
       )}
     </div>
   );
+}
+
+function profitabilityBadgeClass(status) {
+  if (status === "Loss") return "badge-inactive";
+  if (status === "Low Profit") return "badge-pending";
+  if (status === "Moderate Profit" || status === "High Profit") return "badge-active";
+  return "";
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }

@@ -4,6 +4,7 @@ const router = express.Router();
 const { requireAuth, requireAnyRole } = require("../middleware/auth");
 const { getColumns, tableExists } = require("../utils/dbIntrospection");
 const { buildActor, writeAuditLog } = require("../utils/auditLog");
+const { writeInventoryMovement } = require("../utils/inventoryMovements");
 
 const round2 = (num) => Number(Number(num || 0).toFixed(2));
 
@@ -33,13 +34,19 @@ async function getPurchaseOrderColumns() {
   return getColumns("purchase_orders");
 }
 
-async function applyInventoryForPurchaseItems(conn, cleanedItems) {
+async function applyInventoryForPurchaseItems(conn, cleanedItems, movementContext = {}) {
   const ingredientCols = await getColumns("ingredients");
   const hasQuantity = Boolean(ingredientCols.quantity);
   const hasLastUpdated = Boolean(ingredientCols.last_updated);
   for (const it of cleanedItems) {
     if (!it.ingredientId) continue;
     const qty = round2(it.quantity || 0);
+    const [[ingredient]] = await conn.query(
+      "SELECT id, ingredient_name, base_unit, quantity FROM ingredients WHERE id=? FOR UPDATE",
+      [it.ingredientId]
+    );
+    if (!ingredient) continue;
+    const currentQty = Number(ingredient.quantity || 0);
     const updates = [];
     const values = [];
     if (hasQuantity) {
@@ -50,8 +57,23 @@ async function applyInventoryForPurchaseItems(conn, cleanedItems) {
       updates.push("last_updated = NOW()");
     }
     if (updates.length) {
-      values.push(it.ingredientId);
+      values.push(ingredient.id);
       await conn.query(`UPDATE ingredients SET ${updates.join(", ")} WHERE id=?`, values);
+      await writeInventoryMovement(
+        {
+          ingredient_id: ingredient.id,
+          movement_type: movementContext.movementType || "PURCHASE_ORDER_IN",
+          quantity_change: qty,
+          resulting_quantity: currentQty + qty,
+          unit: it.unit || ingredient.base_unit || null,
+          source_module: "PURCHASE_ORDERS",
+          reference_type: movementContext.referenceType || "purchase_order",
+          reference_id: movementContext.referenceId || null,
+          notes: movementContext.notes || `Purchase order stock posted for ${ingredient.ingredient_name}.`,
+          created_by_user_id: movementContext.createdByUserId || null,
+        },
+        conn
+      );
     }
   }
 }
@@ -268,7 +290,10 @@ router.post("/", async (req, res) => {
         [rows]
       );
 
-      await applyInventoryForPurchaseItems(conn, cleanedItems);
+      await applyInventoryForPurchaseItems(conn, cleanedItems, {
+        referenceId: orderId,
+        createdByUserId: req.user?.id || null,
+      });
     }
 
     await writeAuditLog(
@@ -380,7 +405,12 @@ router.put("/:id", async (req, res) => {
     );
 
     if (finalize && purchaseOrderCols.inventory_posted_at) {
-      await applyInventoryForPurchaseItems(conn, cleanedItems);
+      await applyInventoryForPurchaseItems(conn, cleanedItems, {
+        referenceId: orderId,
+        createdByUserId: req.user?.id || null,
+        movementType: "PURCHASE_ORDER_POST",
+        notes: `Purchase order #${orderId} posted to inventory.`,
+      });
       await conn.query("UPDATE purchase_orders SET inventory_posted_at = NOW() WHERE id=?", [orderId]);
     }
 
@@ -444,10 +474,27 @@ router.delete("/:id", async (req, res) => {
       }
 
       for (const detail of details) {
+        const [[ingredient]] = await conn.query("SELECT id, ingredient_name, base_unit, quantity FROM ingredients WHERE id=? FOR UPDATE", [detail.ingredient_id]);
+        if (!ingredient) continue;
         await conn.query("UPDATE ingredients SET quantity = quantity - ?, last_updated = NOW() WHERE id=?", [
           Number(detail.quantity || 0),
           detail.ingredient_id,
         ]);
+        await writeInventoryMovement(
+          {
+            ingredient_id: ingredient.id,
+            movement_type: "PURCHASE_ORDER_DELETE_OUT",
+            quantity_change: -Number(detail.quantity || 0),
+            resulting_quantity: Number(ingredient.quantity || 0) - Number(detail.quantity || 0),
+            unit: ingredient.base_unit || null,
+            source_module: "PURCHASE_ORDERS",
+            reference_type: "purchase_order",
+            reference_id: orderId,
+            notes: `Deleted purchase order #${orderId} and reversed stock for ${ingredient.ingredient_name}.`,
+            created_by_user_id: req.user?.id || null,
+          },
+          conn
+        );
       }
     }
 

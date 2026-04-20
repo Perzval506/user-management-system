@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import api from "../services/api";
-import { formatNumber } from "../utils/formatters";
+import { formatDateTimeFriendly, formatNumber } from "../utils/formatters";
 import { useToast } from "../components/Toast";
 import ToDoNext from "../components/ToDoNext";
 import { compareInventoryCategories, normalizeInventoryCategory } from "../utils/inventoryCategories";
@@ -9,14 +9,20 @@ export default function InventorySummary() {
   const { push: pushToast } = useToast();
   const [rows, setRows] = useState([]);
   const [weeklyReview, setWeeklyReview] = useState({ recommendations: [], categories: [] });
+  const [movements, setMovements] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [summaryRes, weeklyRes] = await Promise.all([api.get("/inventory/summary"), api.get("/inventory/weekly-review")]);
+      const [summaryRes, weeklyRes, movementRes] = await Promise.all([
+        api.get("/inventory/summary"),
+        api.get("/inventory/weekly-review"),
+        api.get("/inventory/movements", { params: { limit: 12 } }),
+      ]);
       setRows(summaryRes.data || []);
       setWeeklyReview(weeklyRes.data || { recommendations: [], categories: [] });
+      setMovements(movementRes.data || []);
     } catch (error) {
       pushToast({ type: "error", title: "Load failed", message: error?.response?.data?.message || error.message });
     } finally {
@@ -76,6 +82,15 @@ export default function InventorySummary() {
           <div className="tableTopBar">Recommended Buys This Week</div>
           <div className="tableScroller">
             <table className="table table-wide">
+              <colgroup>
+                <col style={{ width: "18%" }} />
+                <col />
+                <col style={{ width: 110 }} />
+                <col style={{ width: 130 }} />
+                <col style={{ width: 130 }} />
+                <col style={{ width: 130 }} />
+                <col style={{ width: 140 }} />
+              </colgroup>
               <thead>
                 <tr>
                   <th>Category</th>
@@ -105,6 +120,47 @@ export default function InventorySummary() {
               </tbody>
             </table>
           </div>
+        </div>
+      </div>
+
+      <div className="tableWrap inventoryReviewTable">
+        <div className="tableTopBar">Recent Inventory Movements</div>
+        <div className="tableScroller">
+          <table className="table table-wide">
+            <colgroup>
+              <col />
+              <col style={{ width: 150 }} />
+              <col style={{ width: 120 }} />
+              <col style={{ width: 150 }} />
+              <col style={{ width: 170 }} />
+              <col style={{ width: 180 }} />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>Ingredient</th>
+                <th>Movement</th>
+                <th className="text-right">Change</th>
+                <th className="text-right">Resulting stock</th>
+                <th>Source</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {movements.map((movement) => (
+                <tr key={movement.id}>
+                  <td className="inventoryReviewItemName">{movement.ingredient_name}</td>
+                  <td>{String(movement.movement_type || "").replace(/_/g, " ")}</td>
+                  <td className="text-right mono">{formatSignedNumber(movement.quantity_change)}</td>
+                  <td className="text-right mono">{formatNumber(movement.resulting_quantity || 0)}</td>
+                  <td>{movement.source_module || "-"}</td>
+                  <td>{formatDateTimeFriendly(movement.created_at)}</td>
+                </tr>
+              ))}
+              {!loading && movements.length === 0 && (
+                <tr><td colSpan="6" className="inventoryReviewEmpty">Inventory movements will appear here once stock changes are recorded.</td></tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -144,4 +200,10 @@ export default function InventorySummary() {
       ))}
     </div>
   );
+}
+
+function formatSignedNumber(value) {
+  const numeric = Number(value || 0);
+  const sign = numeric > 0 ? "+" : "";
+  return `${sign}${formatNumber(numeric)}`;
 }

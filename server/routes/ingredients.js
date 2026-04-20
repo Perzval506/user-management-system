@@ -5,6 +5,7 @@ const { requireAuth, requireAnyRole } = require("../middleware/auth");
 const ALLOWED_UNITS = require("../utils/units");
 const { tableExists, columnExists } = require("../utils/dbIntrospection");
 const { buildActor, writeAuditLog } = require("../utils/auditLog");
+const { writeInventoryMovement } = require("../utils/inventoryMovements");
 
 const canReadIngredients = requireAnyRole(["OWNER", "STOCKROOM_STAFF", "CASHIER"]);
 const canManageIngredients = requireAnyRole(["OWNER", "STOCKROOM_STAFF"]);
@@ -355,6 +356,23 @@ router.post("/", canManageIngredients, async (req, res) => {
     }
 
     const [created] = await conn.query(`INSERT INTO ingredients (${fields.join(",")}) VALUES (${placeholders.join(",")})`, vals);
+    if (qtyCol && qtyToAdd > 0) {
+      await writeInventoryMovement(
+        {
+          ingredient_id: created.insertId,
+          movement_type: "INITIAL_STOCK_IN",
+          quantity_change: qtyToAdd,
+          resulting_quantity: qtyToAdd,
+          unit: bu,
+          source_module: "INGREDIENTS",
+          reference_type: "ingredient",
+          reference_id: created.insertId,
+          notes: `Created ingredient ${ingredient_name} with opening stock.`,
+          created_by_user_id: req.user?.id || null,
+        },
+        conn
+      );
+    }
     await syncCategoryRegistry(conn, category);
     await writeAuditLog(
       {
@@ -413,7 +431,36 @@ router.put("/:id", canManageIngredients, async (req, res) => {
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
+      const [[existing]] = await conn.query(
+        `SELECT id, ingredient_name, base_unit, ${qtyCol ? `${qtyCol} AS quantity` : "NULL AS quantity"} FROM ingredients WHERE id=? FOR UPDATE`,
+        [id]
+      );
+      if (!existing) {
+        await conn.rollback();
+        return res.status(404).json({ message: "Ingredient not found." });
+      }
       await conn.query(`UPDATE ingredients SET ${updates.join(", ")} WHERE id=?`, [...vals, id]);
+      if (hasQty && qtyCol) {
+        const previousQty = Number(existing.quantity || 0);
+        const delta = round2(qtyVal - previousQty);
+        if (delta !== 0) {
+          await writeInventoryMovement(
+            {
+              ingredient_id: Number(id),
+              movement_type: delta > 0 ? "MANUAL_ADJUSTMENT_IN" : "MANUAL_ADJUSTMENT_OUT",
+              quantity_change: delta,
+              resulting_quantity: qtyVal,
+              unit: bu || existing.base_unit || null,
+              source_module: "INGREDIENTS",
+              reference_type: "ingredient",
+              reference_id: Number(id),
+              notes: `Manual stock adjustment for ${ingredient_name}.`,
+              created_by_user_id: req.user?.id || null,
+            },
+            conn
+          );
+        }
+      }
       await syncCategoryRegistry(conn, category);
       await writeAuditLog({
         ...buildActor(req),
@@ -452,3 +499,7 @@ router.delete("/:id", canManageIngredients, async (req, res) => {
 });
 
 module.exports = router;
+
+function round2(value) {
+  return Number(Number(value || 0).toFixed(2));
+}
