@@ -86,14 +86,14 @@ export default function Staff() {
   }, []);
 
   return (
-    <div className="page" style={{ maxWidth: 1120 }}>
+    <div className="page staffWorkspace">
       <div className="pageHeader">
         <div>
           <h2 className="pageTitle">Staff Workspace</h2>
-          <div className="pageSub" style={{ marginTop: 6 }}>
+          <div className="pageSub staffSubLine">
             Logged in as <b>{user?.username}</b> ({user?.role})
           </div>
-          <div className="pageSub" style={{ marginTop: 8 }}>
+          <div className="pageSub staffSubDetail">
             {roleSummary(user?.role)}
           </div>
           {msg ? <div className="inlineStatus error">{msg}</div> : null}
@@ -104,38 +104,25 @@ export default function Staff() {
         </button>
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(280px, 360px) minmax(0, 1fr)",
-          gap: 20,
-          alignItems: "start",
-        }}
-      >
+      <div className="staffWorkspaceGrid">
         <div className="card">
           {loading ? (
             <div>Loading...</div>
           ) : (
             <>
-              <h3 style={{ marginTop: 0 }}>Profile</h3>
+              <h3 className="staffCardTitle">Profile</h3>
 
               {profile?.avatar_url ? (
-                <div style={{ marginBottom: 16 }}>
+                <div className="staffAvatarWrap">
                   <img
                     src={profile.avatar_url}
                     alt={`${profile.full_name || "Staff"} avatar`}
-                    style={{
-                      width: 88,
-                      height: 88,
-                      borderRadius: 20,
-                      objectFit: "cover",
-                      border: "1px solid #E7EAF3",
-                    }}
+                    className="staffAvatarLarge"
                   />
                 </div>
               ) : null}
 
-              <div style={{ display: "grid", gap: 12 }}>
+              <div className="staffFieldGrid">
                 <Field label="Full Name" value={profile?.full_name || "-"} />
                 <Field label="Username" value={user?.username || "-"} />
                 <Field label="Role" value={user?.role || "-"} />
@@ -144,7 +131,7 @@ export default function Staff() {
                 <Field label="Address" value={profile?.address || "-"} />
               </div>
 
-              <div style={{ marginTop: 12, color: "#6B7280", fontSize: 12 }}>
+              <div className="staffProfileHint">
                 Profile details are read-only here. Request owner approval for account changes.
               </div>
             </>
@@ -152,27 +139,17 @@ export default function Staff() {
         </div>
 
         <div className="card">
-          <h3 style={{ marginTop: 0 }}>Assigned Functions</h3>
-          <div className="pageSub" style={{ marginBottom: 16 }}>
+          <h3 className="staffCardTitle">Assigned Functions</h3>
+          <div className="pageSub staffActionsHint">
             Only pages backed by your current role permissions are shown here.
           </div>
 
           {actions.length ? (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
+            <div className="staffActionGrid">
               {actions.map((action) => (
-                <div
-                  key={action.to}
-                  style={{
-                    border: "1px solid #E7EAF3",
-                    borderRadius: 18,
-                    padding: 18,
-                    background: "#FBFBFE",
-                    display: "grid",
-                    gap: 10,
-                  }}
-                >
-                  <div style={{ fontSize: 18, fontWeight: 800, color: "#1F2937" }}>{action.title}</div>
-                  <div style={{ color: "#6B7280", lineHeight: 1.5 }}>{action.description}</div>
+                <div key={action.to} className="staffActionCard">
+                  <div className="staffActionTitle">{action.title}</div>
+                  <div className="staffActionDesc">{action.description}</div>
                   <button type="button" className="btn btn-primary" onClick={() => navigate(action.to)}>
                     {action.cta}
                   </button>
@@ -190,9 +167,9 @@ export default function Staff() {
 
 function Field({ label, value }) {
   return (
-    <div style={{ padding: 14, borderRadius: 14, background: "#FBFBFE", border: "1px solid #E7EAF3" }}>
-      <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 6 }}>{label}</div>
-      <div style={{ fontWeight: 800, fontSize: 15 }}>{value}</div>
+    <div className="staffField">
+      <div className="staffFieldLabel">{label}</div>
+      <div className="staffFieldValue">{value}</div>
     </div>
   );
 }

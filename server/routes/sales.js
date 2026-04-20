@@ -179,9 +179,12 @@ router.get("/", async (_req, res) => {
     }
 
     const salesTxCols = await getColumns("sales_transactions");
+    const guestNameSelect = salesTxCols.guest_name ? "st.guest_name" : "NULL AS guest_name";
+    const orderTypeSelect = salesTxCols.order_type ? "st.order_type" : "'DINE_IN' AS order_type";
     const [transactions] = await pool.query(
-      `SELECT st.id, st.sale_datetime, st.net_amount, st.status, st.notes, st.cashier_user_id, st.guest_name,
-              ${salesTxCols.order_type ? "st.order_type" : "'DINE_IN' AS order_type"},
+      `SELECT st.id, st.sale_datetime, st.net_amount, st.status, st.notes, st.cashier_user_id,
+              ${guestNameSelect},
+              ${orderTypeSelect},
               COALESCE(NULLIF(TRIM(u.full_name), ''), NULLIF(TRIM(u.username), ''), CONCAT('User #', st.cashier_user_id)) AS cashier_name,
               COUNT(si.id) AS line_count
          FROM sales_transactions st
@@ -472,8 +475,12 @@ router.post("/", async (req, res) => {
       );
     }
 
+    const ingredientCols = await getColumns("ingredients");
+    const decrementStockSql = ingredientCols.last_updated
+      ? "UPDATE ingredients SET quantity = quantity - ?, last_updated = NOW() WHERE id=?"
+      : "UPDATE ingredients SET quantity = quantity - ? WHERE id=?";
     for (const [ingredientId, usage] of Object.entries(inventoryTotals)) {
-      await conn.query("UPDATE ingredients SET quantity = quantity - ?, last_updated = NOW() WHERE id=?", [
+      await conn.query(decrementStockSql, [
         usage.qtyUsedBaseUnit,
         Number(ingredientId),
       ]);
@@ -541,8 +548,12 @@ router.patch("/:id/void", async (req, res) => {
       [saleId]
     );
 
+    const ingredientCols = await getColumns("ingredients");
+    const incrementStockSql = ingredientCols.last_updated
+      ? "UPDATE ingredients SET quantity = quantity + ?, last_updated = NOW() WHERE id=?"
+      : "UPDATE ingredients SET quantity = quantity + ? WHERE id=?";
     for (const usage of usageRows) {
-      await conn.query("UPDATE ingredients SET quantity = quantity + ?, last_updated = NOW() WHERE id=?", [
+      await conn.query(incrementStockSql, [
         Number(usage.qty_used_base_unit || 0),
         usage.ingredient_id,
       ]);

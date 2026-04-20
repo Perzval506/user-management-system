@@ -64,7 +64,7 @@ export default function Settings() {
         </div>
       </div>
 
-      <div className="card" style={{ marginBottom: 14 }}>
+      <div className="card settingsCard">
         <div className="settingsSectionHead">
           <div>
             <h3 className="settingsSectionTitle">Appearance</h3>
@@ -96,7 +96,7 @@ export default function Settings() {
         </div>
       </div>
 
-      <div className="card">
+      <div className="card settingsCard">
         <div className="settingsSectionHead">
           <div>
             <h3 className="settingsSectionTitle">Quick Actions</h3>

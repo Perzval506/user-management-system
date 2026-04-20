@@ -6,7 +6,7 @@ import ToDoNext from "../components/ToDoNext";
 import { compareInventoryCategories, normalizeInventoryCategory } from "../utils/inventoryCategories";
 
 export default function InventorySummary() {
-  const toast = useToast();
+  const { push: pushToast } = useToast();
   const [rows, setRows] = useState([]);
   const [weeklyReview, setWeeklyReview] = useState({ recommendations: [], categories: [] });
   const [loading, setLoading] = useState(true);
@@ -18,11 +18,11 @@ export default function InventorySummary() {
       setRows(summaryRes.data || []);
       setWeeklyReview(weeklyRes.data || { recommendations: [], categories: [] });
     } catch (error) {
-      toast.push({ type: "error", title: "Load failed", message: error?.response?.data?.message || error.message });
+      pushToast({ type: "error", title: "Load failed", message: error?.response?.data?.message || error.message });
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [pushToast]);
 
   useEffect(() => {
     load();
@@ -49,33 +49,33 @@ export default function InventorySummary() {
       {/* UX cleanup: the watchlist is surfaced here so stock risks are visible before scanning the full table. */}
       <ToDoNext items={rows} loading={loading} />
 
-      <div className="card" style={{ marginTop: 14 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 12 }}>
+      <div className="card inventoryReviewCard">
+        <div className="inventoryReviewHead">
           <div>
-            <div style={{ fontWeight: 900 }}>Weekly Stock Review</div>
-            <div style={{ color: "#6B7280", marginTop: 4 }}>
+            <div className="inventoryReviewTitle">Weekly Stock Review</div>
+            <div className="inventoryReviewSub">
               Use this review before buying. It combines current stock, last 7 days of purchases, and last 7 days of usage.
             </div>
           </div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+        <div className="inventoryReviewStats">
           {(weeklyReview.categories || [])
             .slice()
             .sort((a, b) => compareInventoryCategories(a.category, b.category))
             .map((group) => (
-              <div key={group.category} className="card" style={{ background: "#f8fafc" }}>
-                <div style={{ color: "#6B7280", marginBottom: 6 }}>{group.category}</div>
-                <div style={{ fontWeight: 800 }}>{group.recommended_buy_count} to review</div>
-                <div style={{ color: "#6B7280", marginTop: 6, fontSize: 12 }}>
+              <div key={group.category} className="inventoryReviewStat">
+                <div className="inventoryReviewStatLabel">{group.category}</div>
+                <div className="inventoryReviewStatValue">{group.recommended_buy_count} to review</div>
+                <div className="inventoryReviewStatMeta">
                   {group.low_stock_count} low stock, {group.out_of_stock_count} out of stock
                 </div>
               </div>
             ))}
         </div>
-        <div className="tableWrap" style={{ marginTop: 14 }}>
+        <div className="tableWrap inventoryReviewTable">
           <div className="tableTopBar">Recommended Buys This Week</div>
-          <div style={{ overflowX: "auto" }}>
-            <table className="table">
+          <div className="tableScroller">
+            <table className="table table-wide">
               <thead>
                 <tr>
                   <th>Category</th>
@@ -91,7 +91,7 @@ export default function InventorySummary() {
                 {(weeklyReview.recommendations || []).filter((item) => item.needs_attention).slice(0, 20).map((item) => (
                   <tr key={`review-${item.id}`}>
                     <td>{normalizeInventoryCategory(item.category)}</td>
-                    <td style={{ fontWeight: 700 }}>{item.ingredient_name}</td>
+                    <td className="inventoryReviewItemName">{item.ingredient_name}</td>
                     <td>{item.base_unit || "-"}</td>
                     <td className="text-right mono">{formatNumber(item.total_stock)}</td>
                     <td className="text-right mono">{formatNumber(item.weekly_purchased)}</td>
@@ -100,7 +100,7 @@ export default function InventorySummary() {
                   </tr>
                 ))}
                 {!loading && !(weeklyReview.recommendations || []).some((item) => item.needs_attention) && (
-                  <tr><td colSpan="7" style={{ padding: 12, opacity: 0.7 }}>No urgent weekly buys suggested right now.</td></tr>
+                  <tr><td colSpan="7" className="inventoryReviewEmpty">No urgent weekly buys suggested right now.</td></tr>
                 )}
               </tbody>
             </table>
@@ -109,13 +109,13 @@ export default function InventorySummary() {
       </div>
 
       {sortedCategories.map((category) => (
-        <div key={category} className="tableWrap" style={{ marginTop: 14 }}>
+        <div key={category} className="tableWrap inventoryCategoryTable">
           <div className="tableTopBar">{category}</div>
           {loading ? (
-            <div style={{ padding: 12 }}>Loading...</div>
+            <div className="inventoryCategoryLoading">Loading...</div>
           ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table className="table" style={{ tableLayout: "fixed", width: "100%" }}>
+            <div className="tableScroller">
+              <table className="table inventoryCategoryGrid">
                 <colgroup>
                   <col />
                   <col style={{ width: 180 }} />
@@ -131,8 +131,8 @@ export default function InventorySummary() {
                 <tbody>
                   {groupedRows[category].map((row) => (
                     <tr key={row.id}>
-                      <td style={{ fontWeight: 700, wordBreak: "break-word" }}>{row.ingredient_name}</td>
-                      <td style={{ textAlign: "left" }}>{row.base_unit || "-"}</td>
+                      <td className="inventoryCategoryName">{row.ingredient_name}</td>
+                      <td>{row.base_unit || "-"}</td>
                       <td className="text-right mono">{formatNumber(row.total_stock)}</td>
                     </tr>
                   ))}

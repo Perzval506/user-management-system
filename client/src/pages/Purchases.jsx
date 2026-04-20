@@ -108,24 +108,14 @@ export default function Purchases() {
         </div>
 
         <div className="pageActions">
-          <div className="badge" style={{ background: "rgba(34,197,94,0.10)", borderColor: "rgba(34,197,94,0.25)" }}>
+          <div className="badge badge-active">
             This week: {formatMoney(weeklyTotal)}
           </div>
         </div>
       </div>
 
       <div className="card">
-        <div
-          style={{
-            marginBottom: 14,
-            padding: 12,
-            borderRadius: 12,
-            background: "var(--surface2)",
-            border: "1px solid var(--border)",
-            color: "var(--muted)",
-            lineHeight: 1.5,
-          }}
-        >
+        <div className="tableFilterBar mutedHint">
           Use this for one quick ingredient purchase. If the receipt has several line items, record it in Purchase Orders instead.
         </div>
 
@@ -148,7 +138,7 @@ export default function Purchases() {
             <div>
               <label>Total cost</label>
               <input name="price" value={form.price} onChange={onChange} className="input" type="number" step="0.01" min="0" placeholder="0.00" />
-              <div style={{ color: "#6B7280", marginTop: 4, fontSize: 13 }}>
+              <div className="formNote">
                 Enter the total amount paid for this single purchase.
               </div>
             </div>
@@ -156,10 +146,10 @@ export default function Purchases() {
 
           <div>
             <label>Recorded at</label>
-            <div className="input" style={{ background: "var(--surface2)" }}>{formatDateTimeFriendly(new Date())}</div>
+            <div className="input">{formatDateTimeFriendly(new Date())}</div>
           </div>
 
-          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <div className="formActions">
             <button type="button" className="btn btn-primary" disabled={saving} onClick={submitPurchase}>
               {saving ? "Saving..." : "Save purchase"}
             </button>
@@ -167,30 +157,30 @@ export default function Purchases() {
         </form>
       </div>
 
-      <div className="tableWrap" style={{ marginTop: 14 }}>
+      <div className="tableWrap inventoryCategoryTable">
         <div className="tableTopBar">Recent Purchases</div>
         {loading ? (
-          <div style={{ padding: 14 }}>Loading...</div>
+          <div className="tableLoading">Loading...</div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <div className="tableScroller">
             <table className="table">
               <thead>
                 <tr>
                   <th>Ingredient</th>
-                  <th className="text-right" style={{ width: 140 }}>Quantity</th>
-                  <th className="text-right" style={{ width: 160 }}>Total cost</th>
-                  <th style={{ width: 220 }}>Created at</th>
-                  <th style={{ width: 120 }}>Actions</th>
+                  <th className="text-right">Quantity</th>
+                  <th className="text-right">Total cost</th>
+                  <th>Created at</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((row) => (
                   <tr key={row.id}>
-                    <td style={{ fontWeight: 700 }}>{row.ingredient_name}</td>
-                    <td className="text-right mono" style={{ width: 140 }}>{formatNumber(row.quantity || 0)}</td>
-                    <td className="text-right mono" style={{ width: 160 }}>{formatMoney(row.price || 0)}</td>
-                    <td style={{ width: 220 }}>{row.createdAt ? formatDateTimeFriendly(row.createdAt) : "-"}</td>
-                    <td style={{ width: 120 }}>
+                    <td className="tableStrong">{row.ingredient_name}</td>
+                    <td className="text-right mono">{formatNumber(row.quantity || 0)}</td>
+                    <td className="text-right mono">{formatMoney(row.price || 0)}</td>
+                    <td>{row.createdAt ? formatDateTimeFriendly(row.createdAt) : "-"}</td>
+                    <td>
                       <button type="button" className="btn btn-ghost" onClick={() => setDeletingPurchase(row)}>
                         Delete
                       </button>
@@ -199,7 +189,7 @@ export default function Purchases() {
                 ))}
                 {items.length === 0 && (
                   <tr>
-                    <td colSpan="5" style={{ padding: 14, opacity: 0.7 }}>No purchases yet.</td>
+                    <td colSpan="5" className="tableEmpty">No purchases yet.</td>
                   </tr>
                 )}
               </tbody>
@@ -208,28 +198,28 @@ export default function Purchases() {
         )}
       </div>
 
-      <div className="tableWrap" style={{ marginTop: 14 }}>
+      <div className="tableWrap inventoryCategoryTable">
         <div className="tableTopBar">Weekly Spending History</div>
-        <div style={{ overflowX: "auto" }}>
+        <div className="tableScroller">
           <table className="table">
             <thead>
               <tr>
-                <th style={{ width: 220 }}>Week starting</th>
-                <th className="text-right" style={{ width: 160 }}>Purchase count</th>
-                <th className="text-right" style={{ width: 180 }}>Total spent</th>
+                <th>Week starting</th>
+                <th className="text-right">Purchase count</th>
+                <th className="text-right">Total spent</th>
               </tr>
             </thead>
             <tbody>
               {weeklyHistory.map((row) => (
                 <tr key={row.week_start}>
-                  <td style={{ width: 220 }}>{formatDateLong(row.week_start)}</td>
-                  <td className="text-right mono" style={{ width: 160 }}>{formatNumber(row.purchase_count || 0, 0)}</td>
-                  <td className="text-right mono" style={{ width: 180 }}>{formatMoney(row.purchase_total || 0)}</td>
+                  <td>{formatDateLong(row.week_start)}</td>
+                  <td className="text-right mono">{formatNumber(row.purchase_count || 0, 0)}</td>
+                  <td className="text-right mono">{formatMoney(row.purchase_total || 0)}</td>
                 </tr>
               ))}
               {weeklyHistory.length === 0 && (
                 <tr>
-                  <td colSpan="3" style={{ padding: 14, opacity: 0.7 }}>Weekly spending history will appear once purchases are recorded.</td>
+                  <td colSpan="3" className="tableEmpty">Weekly spending history will appear once purchases are recorded.</td>
                 </tr>
               )}
             </tbody>
@@ -242,6 +232,7 @@ export default function Purchases() {
         title="Delete purchase?"
         message={deletingPurchase ? `Delete the purchase record for ${deletingPurchase.ingredient_name}?` : ""}
         confirmLabel="Delete Purchase"
+        confirmVariant="danger"
         onCancel={() => setDeletingPurchase(null)}
         onConfirm={confirmDeletePurchase}
       />

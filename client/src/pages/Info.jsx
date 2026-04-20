@@ -1,21 +1,21 @@
 export default function Info() {
   return (
-    <div className="container" style={{ maxWidth: 760, paddingTop: 52 }}>
-      <div className="card card-pad">
+    <div className="authShell">
+      <div className="card card-pad authCard infoCard">
         <h1 className="h1">System Info</h1>
-        <p className="muted" style={{ marginTop: 6 }}>
+        <p className="muted authSub">
           Boyd's Pizza House User Management System (UMS)
         </p>
 
-        <div style={{ marginTop: 16, display: "grid", gap: 10 }}>
-          <div className="card card-pad" style={{ boxShadow: "none" }}>
+        <div className="infoGrid">
+          <div className="card card-pad infoTile">
             <div className="small muted">Access</div>
-            <div style={{ fontWeight: 800 }}>OWNER, CASHIER, STOCKROOM_STAFF</div>
+            <div className="infoTileValue">OWNER, CASHIER, STOCKROOM_STAFF</div>
           </div>
 
-          <div className="card card-pad" style={{ boxShadow: "none" }}>
+          <div className="card card-pad infoTile">
             <div className="small muted">Purpose</div>
-            <div style={{ fontWeight: 800 }}>Account management + audit logs</div>
+            <div className="infoTileValue">Account management + audit logs</div>
           </div>
         </div>
       </div>

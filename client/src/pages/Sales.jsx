@@ -73,7 +73,7 @@ export default function Sales() {
     }
   }, []);
   const canOverrideClosedDay = currentUser?.role === "OWNER";
-  const toast = useToast();
+  const { push: pushToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [menuItems, setMenuItems] = useState([]);
@@ -114,7 +114,7 @@ export default function Sales() {
           }))
       );
     } catch (error) {
-      toast.push({
+      pushToast({
         type: "error",
         title: "Load failed",
         message: error?.response?.data?.message || error.message || "Failed to load sales",
@@ -122,7 +122,7 @@ export default function Sales() {
     } finally {
       setLoading(false);
     }
-  }, [form.saleDate, toast]);
+  }, [form.saleDate, pushToast]);
 
   useEffect(() => {
     load();
@@ -188,10 +188,10 @@ export default function Sales() {
       .filter((line) => Number.isFinite(line.menuItemId) && line.menuItemId > 0);
 
     if (!cleanedLines.length) {
-      return toast.push({ type: "error", title: "Missing item", message: "Add at least one menu item to the sale." });
+      return pushToast({ type: "error", title: "Missing item", message: "Add at least one menu item to the sale." });
     }
     if (cleanedLines.some((line) => !Number.isFinite(line.quantity) || line.quantity <= 0)) {
-      return toast.push({ type: "error", title: "Invalid quantity", message: "Each sale line needs a quantity greater than 0." });
+      return pushToast({ type: "error", title: "Invalid quantity", message: "Each sale line needs a quantity greater than 0." });
     }
     if (
       supportsContainerCharge(form.orderType) &&
@@ -204,14 +204,14 @@ export default function Sales() {
             line.takeoutContainerUnitPrice < 0)
       )
     ) {
-      return toast.push({
+      return pushToast({
         type: "error",
         title: "Invalid takeout container",
         message: "Each selected takeout container needs a quantity greater than 0 and a valid unit price.",
       });
     }
     if (dayStatus.isClosed) {
-      return toast.push({ type: "error", title: "Day already completed", message: `Sales for ${formatDateLong(form.saleDate)} are already closed.` });
+      return pushToast({ type: "error", title: "Day already completed", message: `Sales for ${formatDateLong(form.saleDate)} are already closed.` });
     }
 
     setSaving(true);
@@ -223,7 +223,7 @@ export default function Sales() {
         notes: form.notes.trim() || null,
         items: cleanedLines,
       });
-      toast.push({ type: "success", title: "Saved", message: "Sale recorded successfully." });
+      pushToast({ type: "success", title: "Saved", message: "Sale recorded successfully." });
       setForm({
         saleDate: todayInManila(),
         orderType: "DINE_IN",
@@ -233,7 +233,7 @@ export default function Sales() {
       });
       await load();
     } catch (error) {
-      toast.push({
+      pushToast({
         type: "error",
         title: "Save failed",
         message: error?.response?.data?.message || error.message || "Failed to record sale",
@@ -248,14 +248,14 @@ export default function Sales() {
     setCompletingDay(true);
     try {
       const response = await api.post("/sales/complete-day", { saleDate: form.saleDate });
-      toast.push({
+      pushToast({
         type: "success",
         title: "Day completed",
         message: `${formatDateLong(response.data?.saleDate || form.saleDate)} is now closed.`,
       });
       await load();
     } catch (error) {
-      toast.push({
+      pushToast({
         type: "error",
         title: "Unable to complete day",
         message: error?.response?.data?.message || error.message || "Failed to complete sales for the day",
@@ -269,11 +269,11 @@ export default function Sales() {
     if (!voidingSale) return;
     try {
       await api.patch(`/sales/${voidingSale.id}/void`);
-      toast.push({ type: "success", title: "Sale voided", message: `Sale #${voidingSale.id} was voided.` });
+      pushToast({ type: "success", title: "Sale voided", message: `Sale #${voidingSale.id} was voided.` });
       setVoidingSale(null);
       await load();
     } catch (error) {
-      toast.push({
+      pushToast({
         type: "error",
         title: "Void failed",
         message: error?.response?.data?.message || error.message || "Failed to void sale",
@@ -284,7 +284,7 @@ export default function Sales() {
   function printSalesSummary() {
     const popup = window.open("", "_blank", "width=980,height=720");
     if (!popup) {
-      toast.push({ type: "error", title: "Popup blocked", message: "Allow popups first so the sales summary can open." });
+      pushToast({ type: "error", title: "Popup blocked", message: "Allow popups first so the sales summary can open." });
       return;
     }
 
@@ -395,7 +395,7 @@ export default function Sales() {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+      <div className="salesSummaryGrid">
         <SummaryCard label="Total revenue" value={formatMoney(summary.totalRevenue)} />
         <SummaryCard label="Today" value={formatMoney(summary.todayRevenue)} />
         <SummaryCard label={`Selected day (${formatDateLong(form.saleDate)})`} value={formatMoney(summary.selectedDayRevenue)} />
@@ -403,21 +403,21 @@ export default function Sales() {
         <SummaryCard label="Current sale preview" value={formatMoney(salePreviewTotal)} />
       </div>
 
-      <div className="card" style={{ marginTop: 14, display: "flex", gap: 14, justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
+      <div className="card salesDayCard">
         <div>
-          <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>Sales day status</div>
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <div className="salesDayMetaLabel">Sales day status</div>
+          <div className="salesDayMetaRow">
             <span className={`badge ${dayStatus.isClosed ? "badge-active" : "badge-muted"}`}>
               {dayStatus.isClosed ? "DAY COMPLETED" : "OPEN"}
             </span>
-            <span style={{ color: "var(--text)", fontWeight: 700 }}>{formatDateLong(dayStatus.saleDate || form.saleDate)}</span>
-            <span style={{ color: "var(--muted)" }}>
+            <span className="salesDayDate">{formatDateLong(dayStatus.saleDate || form.saleDate)}</span>
+            <span className="salesDayNote">
               {dayStatus.isClosed
                 ? `Closed by ${dayStatus.closedByName || "staff"} on ${formatDateTimeFriendly(dayStatus.closedAt)}`
                 : `${formatNumber(summary.selectedDayTransactions || 0, 0)} completed sale(s) totaling ${formatMoney(summary.selectedDayRevenue || 0)}`}
             </span>
             {dayStatus.isClosed && canOverrideClosedDay ? (
-              <span style={{ color: "var(--warning)", fontWeight: 700 }}>
+              <span className="salesDayWarning">
                 Owner may void existing sales for corrections, but cannot add new ones.
               </span>
             ) : null}
@@ -428,7 +428,7 @@ export default function Sales() {
         </button>
       </div>
 
-      <div className="card" style={{ marginTop: 14 }}>
+      <div className="card salesFormCard">
         <form className="formGrid" onSubmit={submitSale}>
           <div className="formRow2">
             <div>
@@ -489,10 +489,10 @@ export default function Sales() {
             </div>
           </div>
 
-          <div className="tableWrap" style={{ marginTop: 8 }}>
+          <div className="tableWrap salesItemsTableWrap">
             <div className="tableTopBar">Sale Items</div>
-            <div style={{ overflowX: "auto" }}>
-              <table className="table">
+            <div className="tableScroller">
+              <table className="table table-wide">
                 <thead>
                   <tr>
                     <th>Menu item</th>
@@ -550,7 +550,7 @@ export default function Sales() {
                         <td className="text-right mono">{selected?.selling_price != null ? formatMoney(selected.selling_price) : "-"}</td>
                         {supportsContainerCharge(form.orderType) ? (
                           <td>
-                            <div style={{ display: "grid", gap: 8 }}>
+                            <div className="salesContainerGrid">
                               <select
                                 className="input"
                                 value={line.takeoutContainerId}
@@ -571,7 +571,7 @@ export default function Sales() {
                                 ))}
                               </select>
                               {line.takeoutContainerId ? (
-                                <div className="formRow2" style={{ gap: 8 }}>
+                                <div className="formRow2">
                                   <input
                                     className="input"
                                     type="number"
@@ -612,7 +612,7 @@ export default function Sales() {
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 10, justifyContent: "space-between", flexWrap: "wrap" }}>
+          <div className="salesActionsBar">
             <button type="button" className="btn" onClick={addLine}>Add Line</button>
             <button type="submit" className="btn btn-primary" disabled={saving || dayStatus.isClosed}>
               {dayStatus.isClosed ? "Sales Closed For This Day" : saving ? "Saving..." : "Record Sale"}
@@ -621,14 +621,14 @@ export default function Sales() {
         </form>
       </div>
 
-      <div style={{ display: "grid", gap: 14, gridTemplateColumns: "minmax(0, 1.4fr) minmax(320px, 1fr)", marginTop: 14 }}>
+      <div className="salesBottomGrid">
         <div className="tableWrap">
           <div className="tableTopBar">Sales History</div>
           {loading ? (
-            <div style={{ padding: 12 }}>Loading...</div>
+            <div className="tableLoading">Loading...</div>
           ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table className="table">
+            <div className="tableScroller">
+              <table className="table table-wide-xl">
                 <thead>
                   <tr>
                     <th>Guest Check</th>
@@ -663,14 +663,14 @@ export default function Sales() {
                             Void
                           </button>
                         ) : (
-                          <span style={{ color: "var(--muted)" }}>Locked</span>
+                          <span className="salesLocked">Locked</span>
                         )}
                       </td>
                     </tr>
                   ))}
                   {sales.length === 0 && (
                     <tr>
-                      <td colSpan="9" style={{ padding: 12, opacity: 0.7 }}>No sales recorded yet.</td>
+                      <td colSpan="9" className="tableEmpty">No sales recorded yet.</td>
                     </tr>
                   )}
                 </tbody>
@@ -681,7 +681,7 @@ export default function Sales() {
 
         <div className="tableWrap">
           <div className="tableTopBar">Revenue Breakdown</div>
-          <div style={{ overflowX: "auto" }}>
+          <div className="tableScroller">
             <table className="table">
               <thead>
                 <tr>
@@ -693,14 +693,14 @@ export default function Sales() {
               <tbody>
                 {breakdown.map((item) => (
                   <tr key={item.menu_item_id}>
-                    <td style={{ fontWeight: 700 }}>{item.menu_name}</td>
+                    <td className="tableStrong">{item.menu_name}</td>
                     <td className="text-right mono">{formatNumber(item.quantity_sold || 0)}</td>
                     <td className="text-right mono">{formatMoney(item.revenue || 0)}</td>
                   </tr>
                 ))}
                 {breakdown.length === 0 && (
                   <tr>
-                    <td colSpan="3" style={{ padding: 12, opacity: 0.7 }}>Revenue breakdown will appear here once sales are recorded.</td>
+                    <td colSpan="3" className="tableEmpty">Revenue breakdown will appear here once sales are recorded.</td>
                   </tr>
                 )}
               </tbody>
@@ -727,9 +727,9 @@ function formatGuestCheckNo(id) {
 
 function SummaryCard({ label, value }) {
   return (
-    <div className="card">
-      <div style={{ color: "#6B7280", marginBottom: 6 }}>{label}</div>
-      <div className="mono" style={{ fontSize: 24, fontWeight: 800 }}>{value}</div>
+    <div className="card dashboardMetricCard">
+      <div className="salesSummaryCardLabel">{label}</div>
+      <div className="mono salesSummaryCardValue">{value}</div>
     </div>
   );
 }

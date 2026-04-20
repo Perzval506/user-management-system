@@ -53,6 +53,11 @@ router.get("/weekly-review", async (_req, res) => {
   try {
     const ingredientCols = await getColumns("ingredients");
     const hasQuantity = Boolean(ingredientCols.quantity);
+    const lastUpdatedSql = ingredientCols.last_updated
+      ? "i.last_updated"
+      : ingredientCols.updated_at
+        ? "i.updated_at AS last_updated"
+        : "NULL AS last_updated";
     const hasPurchaseOrderDetails = await tableExists("purchase_order_details");
     const totalStockSql = hasQuantity
       ? "COALESCE(i.quantity, 0)"
@@ -66,7 +71,7 @@ router.get("/weekly-review", async (_req, res) => {
              i.category,
              i.base_unit,
              ${totalStockSql} AS total_stock,
-             i.last_updated
+             ${lastUpdatedSql}
         FROM ingredients i
        ORDER BY COALESCE(i.category, 'UNCATEGORIZED') ASC, i.ingredient_name ASC
     `);

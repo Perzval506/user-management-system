@@ -73,6 +73,13 @@ const Icons = {
       <path d="M6 7h12M6 12h12M6 17h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </svg>
   ),
+  panel: (
+    <svg viewBox="0 0 24 24" fill="none">
+      <rect x="3.8" y="4" width="16.4" height="16" rx="3.2" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M9 4.4v15.2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="m12.8 9.4 2.6 2.6-2.6 2.6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
   sales: (
     <svg viewBox="0 0 24 24" fill="none">
       <path d="M5 18h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
@@ -113,6 +120,17 @@ const Icons = {
   plus: (
     <svg viewBox="0 0 24 24" fill="none">
       <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
+    </svg>
+  ),
+  chevronDown: (
+    <svg viewBox="0 0 24 24" fill="none">
+      <path d="m7 10 5 5 5-5" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  logout: (
+    <svg viewBox="0 0 24 24" fill="none">
+      <path d="M9 21h6a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2H9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M14 12H4m0 0 3-3m-3 3 3 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   ),
 };
@@ -333,6 +351,13 @@ export default function AppShell() {
   }, [sidebarCollapsed]);
 
   useEffect(() => {
+    if (sidebarCollapsed) {
+      setOpenItems(false);
+      setOpenPurchasingDrop(false);
+    }
+  }, [sidebarCollapsed]);
+
+  useEffect(() => {
     applyUiPreferences({
       theme: getThemePreference(),
       fontSize: getFontSizePreference(),
@@ -365,6 +390,26 @@ export default function AppShell() {
 
   const isActiveGroup = (prefix) => location.pathname.startsWith(prefix);
 
+  const toggleItemsMenu = () => {
+    if (sidebarCollapsed) {
+      setSidebarCollapsed(false);
+      setOpenPurchasingDrop(false);
+      setOpenItems(true);
+      return;
+    }
+    setOpenItems((value) => !value);
+  };
+
+  const togglePurchasingMenu = () => {
+    if (sidebarCollapsed) {
+      setSidebarCollapsed(false);
+      setOpenItems(false);
+      setOpenPurchasingDrop(true);
+      return;
+    }
+    setOpenPurchasingDrop((value) => !value);
+  };
+
   return (
     <ToastProvider>
       <ToastViewport />
@@ -376,7 +421,6 @@ export default function AppShell() {
           className="sidebarScrim"
           aria-label="Sidebar scrim disabled"
           tabIndex={-1}
-          style={{ pointerEvents: "none" }}
         />
 
         <aside className="sidebar">
@@ -396,6 +440,8 @@ export default function AppShell() {
                 <NavLink
                   to="/admin"
                   end
+                  title="Dashboard"
+                  data-nav-label="Dashboard"
                   className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}
                 >
                   <span className="ico">{Icons.dashboard}</span>
@@ -404,6 +450,8 @@ export default function AppShell() {
 
                 <NavLink
                   to="/admin/staff"
+                  title="My Staff"
+                  data-nav-label="My Staff"
                   className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}
                 >
                   <span className="ico">{Icons.users}</span>
@@ -413,67 +461,67 @@ export default function AppShell() {
                 <div ref={itemsRef} className="navGroup">
                   <button
                     type="button"
+                    title="Items"
+                    data-nav-label="Items"
+                    aria-label="Items"
                     className={`navLink navBtn ${isActiveGroup("/admin/items") || isActiveGroup("/admin/ingredients") ? "active" : ""}`}
-                    onClick={() => {
-                      setOpenItems((value) => !value);
-                    }}
+                    onClick={toggleItemsMenu}
                   >
                     <span className="ico">{Icons.box}</span>
                     <span className="navGrow">Items</span>
-                    <span className={`chev ${openItems ? "up" : ""}`}>v</span>
+                    <span className={`chev ${openItems ? "up" : ""}`}>{Icons.chevronDown}</span>
                   </button>
 
-                  {openItems && (
-                    <div className="dropdown open">
-                      <button
-                        className="dropdownItem"
-                        onClick={() => navigate("/admin/items/manage")}
-                      >
-                        Manage Ingredients
-                      </button>
-                      <button
-                        className="dropdownItem"
-                        onClick={() => navigate("/admin/inventory/summary")}
-                      >
-                        Inventory Summary
-                      </button>
-                    </div>
-                  )}
+                  <div className={`dropdown ${openItems ? "open" : ""}`}>
+                    <button
+                      className="dropdownItem"
+                      onClick={() => navigate("/admin/items/manage")}
+                    >
+                      Manage Ingredients
+                    </button>
+                    <button
+                      className="dropdownItem"
+                      onClick={() => navigate("/admin/inventory/summary")}
+                    >
+                      Inventory Summary
+                    </button>
+                  </div>
                 </div>
 
                 <div ref={purchasingRef} className="navGroup">
                   <button
                     type="button"
+                    title="Purchasing"
+                    data-nav-label="Purchasing"
+                    aria-label="Purchasing"
                     className={`navLink navBtn ${isActiveGroup("/admin/purchases") || isActiveGroup("/admin/purchase-requests") || isActiveGroup("/admin/purchase-orders") ? "active" : ""}`}
-                    onClick={() => {
-                      setOpenPurchasingDrop((value) => !value);
-                    }}
+                    onClick={togglePurchasingMenu}
                   >
                     <span className="ico">{Icons.purchasing}</span>
                     <span className="navGrow">Purchasing</span>
-                    <span className={`chev ${openPurchasingDrop ? "up" : ""}`}>v</span>
+                    <span className={`chev ${openPurchasingDrop ? "up" : ""}`}>{Icons.chevronDown}</span>
                   </button>
 
-                  {openPurchasingDrop && (
-                    <div className="dropdown open">
-                      <button className="dropdownItem" onClick={() => navigate("/admin/purchase-requests")}>
-                        Purchase Requests
-                      </button>
-                      <button className="dropdownItem" onClick={() => navigate("/admin/purchases")}>
-                        Quick Purchases
-                      </button>
-                      <button
-                        className="dropdownItem"
-                        onClick={() => navigate("/admin/purchase-orders")}
-                      >
-                        Purchase Orders
-                      </button>
-                    </div>
-                  )}
+                  <div className={`dropdown ${openPurchasingDrop ? "open" : ""}`}>
+                    <button className="dropdownItem" onClick={() => navigate("/admin/purchase-requests")}>
+                      Purchase Requests
+                    </button>
+                    <button className="dropdownItem" onClick={() => navigate("/admin/purchases")}>
+                      Quick Purchases
+                    </button>
+                    <button
+                      className="dropdownItem"
+                      onClick={() => navigate("/admin/purchase-orders")}
+                    >
+                      Purchase Orders
+                    </button>
+                  </div>
                 </div>
 
                 <NavLink
                   to="/admin/menu/manage"
+                  title="Menu"
+                  data-nav-label="Menu"
                   className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}
                 >
                   <span className="ico">{Icons.menu}</span>
@@ -482,19 +530,23 @@ export default function AppShell() {
 
                 <NavLink
                   to="/admin/catering-orders"
+                  title="Catering"
+                  data-nav-label="Catering"
                   className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}
                 >
                   <span className="ico">{Icons.menu}</span>
                   <span>Catering</span>
                 </NavLink>
 
-                <NavLink to="/audit" className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}>
+                <NavLink to="/audit" title="Audit Logs" data-nav-label="Audit Logs" className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}>
                   <span className="ico">{Icons.audit}</span>
                   <span>Audit Logs</span>
                 </NavLink>
 
                 <NavLink
                   to="/admin/sales"
+                  title="Sales"
+                  data-nav-label="Sales"
                   className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}
                 >
                   <span className="ico">{Icons.sales}</span>
@@ -503,6 +555,8 @@ export default function AppShell() {
 
                 <NavLink
                   to="/settings"
+                  title="Settings"
+                  data-nav-label="Settings"
                   className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}
                 >
                   <span className="ico">{Icons.settings}</span>
@@ -513,16 +567,23 @@ export default function AppShell() {
 
             {role !== "OWNER" &&
               staffNavItemsForRole(role).map((item) => (
-                <NavLink key={item.to} to={item.to} end={item.to === "/staff"} className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}>
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.to === "/staff"}
+                  title={item.label}
+                  data-nav-label={item.label}
+                  className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}
+                >
                   <span className="ico">{Icons[item.icon] || Icons.users}</span>
                   <span>{item.label}</span>
                 </NavLink>
               ))}
           </nav>
 
-          <button className="logoutBtn" onClick={requestLogout}>
-            <span className="logoutDot" />
-            Log Out
+          <button className="logoutBtn" onClick={requestLogout} title="Log Out" data-nav-label="Log Out" aria-label="Log Out">
+            <span className="ico logoutIco">{Icons.logout}</span>
+            <span className="logoutText">Log Out</span>
           </button>
         </aside>
 
@@ -530,11 +591,12 @@ export default function AppShell() {
           <header className="topbar">
             <button
               type="button"
-              className="btn btn-ghost"
+              className={`sidebarToggleBtn iconOnly ${sidebarCollapsed ? "collapsed" : ""}`}
               onClick={() => setSidebarCollapsed((value) => !value)}
               aria-label={sidebarCollapsed ? "Expand main menu" : "Collapse main menu"}
+              title={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
             >
-              {sidebarCollapsed ? "Show Menu" : "Hide Menu"}
+              <span className="sidebarToggleIcon">{Icons.panel}</span>
             </button>
 
             <div className="topbarSpacer" />
@@ -563,12 +625,12 @@ export default function AppShell() {
           <div className="modalBackdrop" onClick={cancelLogout}>
             <div className="modalCard modalCard-sm" onClick={(e) => e.stopPropagation()}>
               <div className="modalHead">
-                <h3 style={{ margin: 0 }}>Are you sure?</h3>
+                <h3 className="modalTitle">Are you sure?</h3>
               </div>
               <div className="modalMessage">You will be logged out of this account.</div>
               <div className="modalActions">
                 <button type="button" className="btn btn-ghost" onClick={cancelLogout}>Cancel</button>
-                <button type="button" className="btn btn-primary" onClick={onLogout}>Log Out</button>
+                <button type="button" className="btn btn-danger" onClick={onLogout}>Log Out</button>
               </div>
             </div>
           </div>

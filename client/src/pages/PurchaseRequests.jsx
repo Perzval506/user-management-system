@@ -497,5 +497,16 @@ function DetailCell({ label, value }) {
   );
 }
 
-const modalBackdrop = { position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.24)", display: "grid", placeItems: "center", padding: 12, zIndex: 200000 };
+const modalBackdrop = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(15, 23, 42, 0.24)",
+  backdropFilter: "blur(3px) saturate(104%)",
+  WebkitBackdropFilter: "blur(3px) saturate(104%)",
+  display: "grid",
+  placeItems: "center",
+  padding: 16,
+  zIndex: 200000,
+  overflowY: "auto",
+};
 const modalCard = { width: "min(920px, 100%)", background: "white", borderRadius: 14, padding: 16, boxShadow: "0 18px 60px rgba(0,0,0,0.35)" };

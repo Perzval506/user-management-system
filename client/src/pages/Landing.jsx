@@ -32,7 +32,7 @@ export default function Landing() {
       </div>
 
       <div className="lp-centerWrap">
-        <div>
+        <div className="lp-hero">
           <h1 className="lp-title">Boyd's Pizza House</h1>
           <h2 className="lp-subtitle">User Management System</h2>
 

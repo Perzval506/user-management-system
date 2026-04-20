@@ -38,7 +38,8 @@ function AvatarPreview({ src, size = 72, alt }) {
     <img
       src={src}
       alt={alt}
-      style={{ width: size, height: size, borderRadius: 16, objectFit: "cover", border: "1px solid var(--border)" }}
+      className="staffAvatarPreview"
+      style={{ width: size, height: size }}
       onError={(event) => {
         event.currentTarget.style.display = "none";
       }}
@@ -52,7 +53,7 @@ function StaffAvatar({ src, name }) {
       <img
         src={src}
         alt={name || "Staff"}
-        style={{ width: 40, height: 40, borderRadius: 12, objectFit: "cover", border: "1px solid var(--border)" }}
+        className="staffAvatarThumb"
         onError={(event) => {
           event.currentTarget.style.display = "none";
         }}
@@ -69,18 +70,7 @@ function StaffAvatar({ src, name }) {
     .toUpperCase() || "U";
 
   return (
-    <div
-      style={{
-        width: 40,
-        height: 40,
-        borderRadius: 12,
-        display: "grid",
-        placeItems: "center",
-        background: "var(--primarySoft)",
-        border: "1px solid var(--border)",
-        fontWeight: 800,
-      }}
-    >
+    <div className="staffAvatarFallback">
       {initials}
     </div>
   );
@@ -385,7 +375,7 @@ export default function StaffManagement() {
           <h2 className="pageTitle">My Staff</h2>
           <div className="pageSub">Create staff accounts, manage access, and keep employee profiles up to date.</div>
           {flash?.text && (
-            <div style={{ color: flash.type === "error" ? "#d94a4a" : "#2e9f68", marginTop: 6 }}>
+            <div className={`inlineStatus ${flash.type === "error" ? "error" : "success"}`}>
               {flash.text}
             </div>
           )}
@@ -409,42 +399,34 @@ export default function StaffManagement() {
 
       {view === "LIST" && (
         <>
-          <div
-            style={{
-              display: "grid",
-              gap: 12,
-              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-              marginTop: 18,
-              marginBottom: 14,
-            }}
-          >
-            <div className="card">
-              <div style={{ color: "#6B7280", marginBottom: 4 }}>Active staff</div>
-              <div style={{ fontSize: 26, fontWeight: 800 }}>{activeCount}</div>
+          <div className="dashboardStatGrid staffSummaryGrid">
+            <div className="card dashboardMetricCard">
+              <div className="dashboardMetricLabel">Active staff</div>
+              <div className="dashboardMetricValue">{activeCount}</div>
             </div>
-            <div className="card">
-              <div style={{ color: "#6B7280", marginBottom: 4 }}>Inactive staff</div>
-              <div style={{ fontSize: 26, fontWeight: 800 }}>{inactiveCount}</div>
+            <div className="card dashboardMetricCard">
+              <div className="dashboardMetricLabel">Inactive staff</div>
+              <div className="dashboardMetricValue">{inactiveCount}</div>
             </div>
-            <div className="card">
-              <div style={{ color: "#6B7280", marginBottom: 4 }}>How this works</div>
-              <div style={{ lineHeight: 1.5 }}>
+            <div className="card dashboardMetricCard">
+              <div className="dashboardMetricLabel">How this works</div>
+              <div className="dashboardMetricHint">
                 Active staff stay visible by default. Turn on inactive users only when you need to review or reactivate them.
               </div>
             </div>
           </div>
 
-          <div style={{ marginBottom: 12 }}>
-            <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
+          <div className="staffFilterRow">
+            <label className="toggleRow">
               <input type="checkbox" checked={showInactive} onChange={(event) => setShowInactive(event.target.checked)} />
-              Show INACTIVE
+              <span className="toggleText">Show INACTIVE</span>
             </label>
           </div>
 
           <div className="tableWrap">
             <div className="tableTopBar">Staff List</div>
-            <div style={{ overflowX: "auto" }}>
-            <table className="table">
+            <div className="tableScroller">
+            <table className="table table-wide">
               <thead>
                 <tr>
                   <th>Name</th>
@@ -460,9 +442,9 @@ export default function StaffManagement() {
                 {visibleUsers.map((user) => (
                   <tr key={user.id}>
                     <td>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div className="staffTableUser">
                         <StaffAvatar src={user.avatar_url} name={user.full_name} />
-                        <div style={{ fontWeight: 800 }}>{user.full_name}</div>
+                        <div className="tableStrong">{user.full_name}</div>
                       </div>
                     </td>
                     <td>{user.username}</td>
@@ -487,7 +469,7 @@ export default function StaffManagement() {
                 ))}
                 {visibleUsers.length === 0 && (
                   <tr>
-                    <td colSpan="6" style={{ opacity: 0.8, padding: 14 }}>
+                    <td colSpan="6" className="tableEmpty">
                       No staff found for this filter.
                     </td>
                   </tr>
@@ -500,10 +482,10 @@ export default function StaffManagement() {
       )}
 
       {view === "CREATE" && (
-        <div className="card" style={{ marginTop: 18 }}>
-          <h3 style={{ marginTop: 0 }}>Create User</h3>
+        <div className="card staffCreateCard">
+          <h3 className="modalTitle">Create User</h3>
 
-          <form onSubmit={createUser} className="formGrid" style={{ maxWidth: 620 }}>
+          <form onSubmit={createUser} className="formGrid staffCreateForm">
             <div className="formRow2">
               <input
                 className="input"
@@ -538,12 +520,12 @@ export default function StaffManagement() {
               required
             />
 
-            <div style={{ display: "grid", gap: 8 }}>
-              <label style={{ fontWeight: 600 }}>Profile photo (optional)</label>
-              <div style={avatarCard}>
+            <div className="staffAvatarUpload">
+              <label>Profile photo (optional)</label>
+              <div className="staffAvatarCard">
                 <AvatarPreview src={form.avatar_url} alt="New user avatar preview" size={84} />
                 {!form.avatar_url && (
-                  <div style={{ color: "#6B7280", fontSize: 13 }}>
+                  <div className="staffHintText">
                     No photo selected yet.
                   </div>
                 )}
@@ -562,7 +544,7 @@ export default function StaffManagement() {
                 >
                   {createAvatarUploading ? "Uploading..." : form.avatar_url ? "Replace Photo" : "Choose Photo"}
                 </button>
-                <div style={{ color: "#6B7280", fontSize: 13 }}>
+                <div className="staffHintText">
                   {createAvatarUploading ? "Uploading avatar..." : "You can skip this now and add a picture later."}
                 </div>
                 {form.avatar_url && (
@@ -601,7 +583,7 @@ export default function StaffManagement() {
               ))}
             </select>
 
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <div className="pageActions">
               <button className="btn btn-primary" type="submit" disabled={createAvatarUploading}>
                 Create
               </button>
@@ -614,35 +596,33 @@ export default function StaffManagement() {
       )}
 
       {profileOpen && (
-        <div style={modalBackdrop} onClick={closeProfile}>
-          <div style={modalCard} onClick={(event) => event.stopPropagation()}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+        <div className="modalBackdrop" onClick={closeProfile}>
+          <div className="modalCard modalCard-lg staffManageModal" onClick={(event) => event.stopPropagation()}>
+            <div className="modalHead">
               <div>
-                <h3 style={{ margin: 0 }}>Manage Staff</h3>
-                <div style={{ color: "#6B7280", fontSize: 13, marginTop: 4 }}>
+                <h3 className="modalTitle">Manage Staff</h3>
+                <div className="mutedHint">
                   Review profile details or update account access in one place.
                 </div>
               </div>
-              <button onClick={closeProfile} style={btnGhost} aria-label="Close profile modal">
-                X
-              </button>
+              <button type="button" className="btn btn-ghost" onClick={closeProfile} aria-label="Close profile modal">Close</button>
             </div>
 
             {profileLoading ? (
-              <div style={{ padding: 14 }}>Loading...</div>
+              <div className="tableLoading">Loading...</div>
             ) : (
               <>
-                <div style={{ display: "flex", gap: 10, marginTop: 14, marginBottom: 12, flexWrap: "wrap" }}>
+                <div className="segmentTabs">
                   <button
                     type="button"
-                    style={tabButton(manageTab === "profile")}
+                    className={`segmentTab ${manageTab === "profile" ? "active" : ""}`}
                     onClick={() => setManageTab("profile")}
                   >
                     Profile
                   </button>
                   <button
                     type="button"
-                    style={tabButton(manageTab === "account")}
+                    className={`segmentTab ${manageTab === "account" ? "active" : ""}`}
                     onClick={() => setManageTab("account")}
                   >
                     Account
@@ -650,11 +630,11 @@ export default function StaffManagement() {
                 </div>
 
                 {manageTab === "profile" ? (
-                  <form onSubmit={saveProfile} style={{ display: "grid", gap: 10, marginTop: 12 }}>
-                    {profileError && <div style={alertErr}>{profileError}</div>}
+                  <form onSubmit={saveProfile} className="formGrid modalSection">
+                    {profileError && <div className="staffManageError">{profileError}</div>}
 
-                    <div style={fieldWrap}>
-                      <label style={label}>Full name</label>
+                    <div>
+                      <label>Full name</label>
                       <input
                         className="input"
                         name="full_name"
@@ -666,8 +646,8 @@ export default function StaffManagement() {
                       />
                     </div>
 
-                    <div style={fieldWrap}>
-                      <label style={label}>Email</label>
+                    <div>
+                      <label>Email</label>
                       <input
                         className="input"
                         name="email"
@@ -679,8 +659,8 @@ export default function StaffManagement() {
                       />
                     </div>
 
-                    <div style={fieldWrap}>
-                      <label style={label}>Phone</label>
+                    <div>
+                      <label>Phone</label>
                       <input
                         className="input"
                         name="phone"
@@ -692,12 +672,12 @@ export default function StaffManagement() {
                       />
                     </div>
 
-                    <div style={fieldWrap}>
-                      <label style={label}>Profile photo</label>
-                      <div style={avatarCard}>
+                    <div>
+                      <label>Profile photo</label>
+                      <div className="staffAvatarCard">
                         <AvatarPreview src={profileData?.avatar_url} size={84} alt="Staff avatar preview" />
                         {!profileData?.avatar_url && (
-                          <div style={{ color: "#6B7280", fontSize: 13 }}>
+                          <div className="staffHintText">
                             No profile photo saved yet.
                           </div>
                         )}
@@ -718,7 +698,7 @@ export default function StaffManagement() {
                             >
                               {profileAvatarUploading ? "Uploading..." : profileData?.avatar_url ? "Replace Photo" : "Choose Photo"}
                             </button>
-                            <div style={{ color: "#6B7280", fontSize: 13 }}>
+                            <div className="staffHintText">
                               {profileAvatarUploading ? "Uploading avatar..." : "Optional. Upload a photo now or leave it unchanged."}
                             </div>
                             {profileData?.avatar_url && (
@@ -728,13 +708,13 @@ export default function StaffManagement() {
                             )}
                           </>
                         ) : (
-                          <div style={{ color: "#6B7280", fontSize: 13 }}>Stored profile image</div>
+                          <div className="staffHintText">Stored profile image</div>
                         )}
                       </div>
                     </div>
 
-                    <div style={fieldWrap}>
-                      <label style={label}>Address</label>
+                    <div>
+                      <label>Address</label>
                       <input
                         className="input"
                         name="address"
@@ -746,7 +726,7 @@ export default function StaffManagement() {
                       />
                     </div>
 
-                    <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 6 }}>
+                    <div className="formActions">
                       <button type="button" onClick={closeProfile} className="btn btn-ghost">
                         Close
                       </button>
@@ -762,9 +742,9 @@ export default function StaffManagement() {
                     </div>
                   </form>
                 ) : (
-                  <form onSubmit={saveEdit} style={{ display: "grid", gap: 10, marginTop: 12 }}>
-                    <div style={fieldWrap}>
-                      <label style={label}>Full name</label>
+                  <form onSubmit={saveEdit} className="formGrid modalSection">
+                    <div>
+                      <label>Full name</label>
                       <input
                         className="input"
                         value={editing?.full_name || ""}
@@ -773,8 +753,8 @@ export default function StaffManagement() {
                       />
                     </div>
 
-                    <div style={fieldWrap}>
-                      <label style={label}>Username</label>
+                    <div>
+                      <label>Username</label>
                       <input
                         className="input"
                         value={editing?.username || ""}
@@ -783,8 +763,8 @@ export default function StaffManagement() {
                       />
                     </div>
 
-                    <div style={fieldWrap}>
-                      <label style={label}>Role</label>
+                    <div>
+                      <label>Role</label>
                       <select
                         className="input"
                         value={editing?.role || ""}
@@ -798,8 +778,8 @@ export default function StaffManagement() {
                       </select>
                     </div>
 
-                    <div style={fieldWrap}>
-                      <label style={label}>New password</label>
+                    <div>
+                      <label>New password</label>
                       <input
                         className="input"
                         placeholder="Leave blank to keep the current password"
@@ -809,7 +789,7 @@ export default function StaffManagement() {
                       />
                     </div>
 
-                    <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 6 }}>
+                    <div className="formActions">
                       <button type="button" onClick={closeProfile} className="btn btn-ghost">
                         Close
                       </button>
@@ -827,62 +807,3 @@ export default function StaffManagement() {
     </div>
   );
 }
-
-const modalBackdrop = {
-  position: "fixed",
-  inset: 0,
-  background: "rgba(15, 23, 42, 0.24)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: 20,
-  overflowY: "auto",
-  zIndex: 9999,
-};
-
-const modalCard = {
-  width: "min(900px, 100%)",
-  background: "var(--surface)",
-  borderRadius: 14,
-  padding: 16,
-  boxShadow: "0 18px 60px rgba(0,0,0,0.35)",
-  maxHeight: "90vh",
-  overflowY: "auto",
-};
-
-const fieldWrap = { display: "grid", gap: 6 };
-const label = {
-  fontSize: 13,
-  color: "var(--text)",
-  fontWeight: 600,
-  marginBottom: 6,
-  display: "block",
-  opacity: 0.95,
-};
-const btnGhost = {
-  padding: "8px 12px",
-  borderRadius: 10,
-  border: "1px solid var(--border)",
-  background: "transparent",
-  cursor: "pointer",
-  color: "var(--text)",
-};
-const alertErr = { marginTop: 12, padding: 12, borderRadius: 10, background: "rgba(239,68,68,0.12)", color: "var(--text)" };
-const avatarCard = {
-  display: "grid",
-  gap: 8,
-  padding: 12,
-  borderRadius: 14,
-  border: "1px solid var(--border)",
-  background: "var(--surface2)",
-  justifyItems: "start",
-};
-const tabButton = (active) => ({
-  padding: "10px 14px",
-  borderRadius: 999,
-  border: active ? "1px solid rgba(209, 122, 45, 0.35)" : "1px solid var(--border)",
-  background: active ? "rgba(209, 122, 45, 0.14)" : "var(--surface)",
-  color: "var(--text)",
-  fontWeight: 700,
-  cursor: "pointer",
-});

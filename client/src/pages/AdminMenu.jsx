@@ -395,14 +395,14 @@ export default function AdminMenu() {
         </div>
       </div>
 
-      <div style={{ marginBottom: 12 }}>
-        <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
+      <div className="pageFilterRow">
+        <label className="toggleRow">
           <input
             type="checkbox"
             checked={showInactive}
             onChange={(event) => setShowInactive(event.target.checked)}
           />
-          Show INACTIVE
+          <span className="toggleText">Show INACTIVE</span>
         </label>
       </div>
 
@@ -410,9 +410,9 @@ export default function AdminMenu() {
         <div className="tableTopBar">Menu Items</div>
 
         {loading ? (
-          <div style={{ padding: 14 }}>Loading...</div>
+          <div className="tableLoading">Loading...</div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <div className="tableScroller">
             <table className="table">
               <thead>
                 <tr>
@@ -429,15 +429,8 @@ export default function AdminMenu() {
               <tbody>
                 {visibleItems.map((row) => (
                   <tr key={row.id}>
-                    <td style={{ fontWeight: 800 }}>{row.menu_name}</td>
-                    <td
-                      style={{
-                        maxWidth: 520,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                      }}
-                    >
+                    <td className="tableStrong">{row.menu_name}</td>
+                    <td className="menuDescCell">
                       {row.description || "-"}
                     </td>
                     <td>
@@ -487,7 +480,7 @@ export default function AdminMenu() {
 
                 {visibleItems.length === 0 && (
                   <tr>
-                    <td colSpan="7" style={{ opacity: 0.8, padding: 14 }}>
+                    <td colSpan="7" className="tableEmpty">
                       No menu items found.
                     </td>
                   </tr>
@@ -499,40 +492,33 @@ export default function AdminMenu() {
       </div>
 
       {open && (
-        <div style={modalBackdrop} onClick={closeModal}>
-          <div style={modalWideCard} onClick={(event) => event.stopPropagation()}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                gap: 10,
-                alignItems: "center",
-              }}
-            >
-              <h3 style={{ margin: 0 }}>
+        <div className="modalBackdrop" onClick={closeModal}>
+          <div className="modalCard modalCard-wide" onClick={(event) => event.stopPropagation()}>
+            <div className="modalHead">
+              <h3 className="modalTitle">
                 {mode === "create" ? "Create Menu Item" : `Manage ${editingItem?.menu_name || "Menu Item"}`}
               </h3>
               <button className="btn btn-ghost" onClick={closeModal}>
-                X
+                Close
               </button>
             </div>
 
             {mode === "edit" && (
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14 }}>
+              <div className="segmentTabs">
                 <button
-                  style={sectionTabStyle(activeSection === MANAGE_SECTIONS.details)}
+                  className={`segmentTab ${activeSection === MANAGE_SECTIONS.details ? "active" : ""}`}
                   onClick={() => setActiveSection(MANAGE_SECTIONS.details)}
                 >
                   Details
                 </button>
                 <button
-                  style={sectionTabStyle(activeSection === MANAGE_SECTIONS.pricing)}
+                  className={`segmentTab ${activeSection === MANAGE_SECTIONS.pricing ? "active" : ""}`}
                   onClick={() => setActiveSection(MANAGE_SECTIONS.pricing)}
                 >
                   Pricing
                 </button>
                 <button
-                  style={sectionTabStyle(activeSection === MANAGE_SECTIONS.recipe)}
+                  className={`segmentTab ${activeSection === MANAGE_SECTIONS.recipe ? "active" : ""}`}
                   onClick={() => setActiveSection(MANAGE_SECTIONS.recipe)}
                 >
                   Recipe
@@ -541,7 +527,7 @@ export default function AdminMenu() {
             )}
 
             {(mode === "create" || activeSection === MANAGE_SECTIONS.details) && (
-              <form onSubmit={onSubmit} className="formGrid" style={{ marginTop: 16 }}>
+              <form onSubmit={onSubmit} className="formGrid modalSection">
                 <div>
                   <label>Menu Name</label>
                   <input
@@ -585,7 +571,6 @@ export default function AdminMenu() {
                     value={form.description}
                     onChange={onChange}
                     className="input"
-                    style={{ minHeight: 90, resize: "vertical" }}
                     placeholder="Short description (optional)"
                   />
                 </div>
@@ -610,7 +595,7 @@ export default function AdminMenu() {
                 <div>
                   <label>
                     Target food cost (decimal)
-                    <span style={{ color: "#6B7280", fontWeight: 400 }}> — e.g., 0.30 = 30%</span>
+                    <span className="inlineMuted"> - e.g., 0.30 = 30%</span>
                   </label>
                   <input
                     name="target_food_cost_percent"
@@ -668,7 +653,7 @@ export default function AdminMenu() {
                   />
                 </div>
 
-                <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                <div className="formActions">
                   <button type="button" className="btn btn-ghost" onClick={closeModal}>
                     Cancel
                   </button>
@@ -680,11 +665,11 @@ export default function AdminMenu() {
             )}
 
             {mode === "edit" && activeSection === MANAGE_SECTIONS.pricing && (
-              <div className="formGrid" style={{ marginTop: 16 }}>
+              <div className="formGrid modalSection">
                 {/* New consolidation: pricing edits now live inside the same manage modal. */}
                 <div>
                   <label>Current selling price</label>
-                  <div className="input" style={{ display: "flex", alignItems: "center" }}>
+                  <div className="input">
                     {editingItem?.selling_price != null ? formatMoney(editingItem.selling_price) : "No price set yet"}
                   </div>
                 </div>
@@ -702,9 +687,9 @@ export default function AdminMenu() {
                 <div>
                   <label>
                     Target food cost (decimal)
-                    <span style={{ color: "#6B7280", fontWeight: 400 }}> — 0.30 = 30%</span>
+                    <span className="inlineMuted"> - 0.30 = 30%</span>
                   </label>
-                  <div className="formRow2" style={{ alignItems: "center", gap: 8 }}>
+                  <div className="formRow2 align-center">
                     <input
                       className="input"
                       type="number"
@@ -720,7 +705,7 @@ export default function AdminMenu() {
                       Save target %
                     </button>
                   </div>
-                  <div style={{ color: "#6B7280", marginTop: 6, fontSize: 12 }}>
+                  <div className="formNote">
                     Used for suggested pricing and profitability.
                   </div>
                 </div>
@@ -766,12 +751,12 @@ export default function AdminMenu() {
                     onChange={onChange}
                     placeholder="0.00"
                   />
-                  <div style={{ color: "#6B7280", marginTop: 6, fontSize: 12 }}>
+                  <div className="formNote">
                     Use these for containers, utensils, bags, and other order-type-specific packaging.
                   </div>
                 </div>
 
-                <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                <div className="formActions">
                   <button className="btn btn-ghost" onClick={closeModal}>
                     Close
                   </button>
@@ -783,12 +768,12 @@ export default function AdminMenu() {
             )}
 
             {mode === "edit" && activeSection === MANAGE_SECTIONS.recipe && (
-              <div style={{ marginTop: 16 }}>
+              <div className="modalSection">
                 {!hasRecipe ? (
-                  <div className="card" style={{ padding: 16 }}>
+                  <div className="card">
                     {/* New consolidation: recipe creation now stays inside the same management surface. */}
-                    <h4 style={{ marginTop: 0 }}>No recipe linked yet</h4>
-                    <p style={{ marginTop: 0, opacity: 0.8 }}>
+                    <h4 className="h2">No recipe linked yet</h4>
+                    <p className="mutedHint">
                       Create a recipe to start managing ingredient lines for this menu item.
                     </p>
                     <form className="formGrid" onSubmit={(event) => {
@@ -811,7 +796,6 @@ export default function AdminMenu() {
                         <label>Recipe description</label>
                         <textarea
                           className="input"
-                          style={{ minHeight: 90, resize: "vertical" }}
                           value={recipeCreateForm.recipe_description}
                           onChange={(event) =>
                             setRecipeCreateForm((current) => ({ ...current, recipe_description: event.target.value }))
@@ -820,7 +804,7 @@ export default function AdminMenu() {
                         />
                       </div>
 
-                      <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                      <div className="formActions">
                         <button type="button" className="btn btn-primary" onClick={handleCreateRecipe}>
                           Create Recipe
                         </button>
@@ -858,33 +842,3 @@ export default function AdminMenu() {
     </div>
   );
 }
-
-const modalBackdrop = {
-  position: "fixed",
-  inset: 0,
-  background: "rgba(15, 23, 42, 0.24)",
-  display: "grid",
-  placeItems: "center",
-  padding: 12,
-  zIndex: 200000, // above toasts and other overlays
-  pointerEvents: "auto",
-};
-
-const modalWideCard = {
-  width: "min(980px, calc(100vw - 32px))",
-  background: "white",
-  borderRadius: 14,
-  padding: 18,
-  boxShadow: "0 18px 60px rgba(0,0,0,0.35)",
-  height: "min(920px, 60vh)",
-  overflowY: "auto",
-};
-const sectionTabStyle = (active) => ({
-  padding: "10px 14px",
-  borderRadius: 999,
-  border: active ? "1px solid rgba(209, 122, 45, 0.35)" : "1px solid #E7EAF3",
-  background: active ? "rgba(209, 122, 45, 0.14)" : "#FFFFFF",
-  color: "#111827",
-  fontWeight: 700,
-  cursor: "pointer",
-});

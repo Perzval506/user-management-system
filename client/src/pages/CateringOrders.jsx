@@ -267,7 +267,7 @@ export default function CateringOrders() {
         <button type="button" className="btn btn-ghost" onClick={load}>Refresh</button>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.1fr) minmax(360px, 0.9fr)", gap: 14 }}>
+      <div className="cateringLayout">
         <div className="card">
           <form className="formGrid" onSubmit={submitOrder}>
             <div className="formRow2">
@@ -301,10 +301,10 @@ export default function CateringOrders() {
               <input className="input" value={form.venue} onChange={(event) => setForm((current) => ({ ...current, venue: event.target.value }))} />
             </div>
 
-            <div className="tableWrap" style={{ marginTop: 8 }}>
+            <div className="tableWrap cateringItemsWrap">
               <div className="tableTopBar">Package Items</div>
-              <div style={{ overflowX: "auto" }}>
-                <table className="table">
+              <div className="tableScroller">
+                <table className="table table-wide">
                   <thead>
                     <tr>
                       <th>Menu item</th>
@@ -386,10 +386,10 @@ export default function CateringOrders() {
               <input className="input" value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Inclusions, setup notes, client requests." />
             </div>
 
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+            <div className="cateringActionsBar">
               <button type="button" className="btn" onClick={() => dispatch({ type: "add" })}>Add Item</button>
-              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                <span className="mono" style={{ fontWeight: 800 }}>Total {formatMoney(computed.total)}</span>
+              <div className="cateringActionsRight">
+                <span className="mono cateringTotal">Total {formatMoney(computed.total)}</span>
                 <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? "Saving..." : "Create Catering Order"}</button>
               </div>
             </div>
@@ -399,10 +399,10 @@ export default function CateringOrders() {
         <div className="tableWrap">
           <div className="tableTopBar">Catering History</div>
           {loading ? (
-            <div style={{ padding: 12 }}>Loading...</div>
+            <div className="tableLoading">Loading...</div>
           ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table className="table">
+            <div className="tableScroller">
+              <table className="table table-wide">
                 <thead>
                   <tr>
                     <th>Customer</th>
@@ -417,12 +417,12 @@ export default function CateringOrders() {
                   {orders.map((order) => (
                     <tr key={order.id}>
                       <td>
-                        <div style={{ fontWeight: 700 }}>{order.customer_name}</div>
-                        <div style={{ color: "var(--muted)" }}>{order.contact_number || "-"}</div>
+                        <div className="cateringInfoName">{order.customer_name}</div>
+                        <div className="cateringInfoSub">{order.contact_number || "-"}</div>
                       </td>
                       <td>
                         <div>{formatDateLong(order.event_date)}</div>
-                        <div style={{ color: "var(--muted)" }}>{order.venue || "-"}</div>
+                        <div className="cateringInfoSub">{order.venue || "-"}</div>
                       </td>
                       <td className="text-right mono">{formatNumber(order.pax_count || 0, 0)}</td>
                       <td className="text-right mono">{formatMoney(order.total_amount || 0)}</td>
@@ -432,7 +432,7 @@ export default function CateringOrders() {
                   ))}
                   {orders.length === 0 ? (
                     <tr>
-                      <td colSpan="6" style={{ padding: 12, opacity: 0.7 }}>No catering orders yet.</td>
+                      <td colSpan="6" className="tableEmpty">No catering orders yet.</td>
                     </tr>
                   ) : null}
                 </tbody>
@@ -446,7 +446,7 @@ export default function CateringOrders() {
         <div className="modalBackdrop" onClick={closeDetails}>
           <div className="modalCard modalCard-lg" onClick={(event) => event.stopPropagation()}>
             <div className="modalHead">
-              <h3 style={{ margin: 0 }}>Catering Order Details</h3>
+              <h3 className="modalTitle">Catering Order Details</h3>
             </div>
             {detail.loading ? (
               <div>Loading...</div>
@@ -464,8 +464,8 @@ export default function CateringOrders() {
                 </div>
                 <div className="tableWrap">
                   <div className="tableTopBar">Booked Items</div>
-                  <div style={{ overflowX: "auto" }}>
-                    <table className="table">
+                  <div className="tableScroller">
+                    <table className="table table-wide">
                       <thead>
                         <tr>
                           <th>Item</th>
@@ -490,15 +490,15 @@ export default function CateringOrders() {
                 <div className="tableWrap">
                   <div className="tableTopBar">
                     Ingredient Requirement Preview
-                    <span className="badge mono" style={{ marginLeft: 10 }}>
+                    <span className="badge mono">
                       {formatNumber(requirements.summary.shortageCount || 0, 0)} shortage(s)
                     </span>
                   </div>
                   {requirements.loading ? (
-                    <div style={{ padding: 12 }}>Loading requirements...</div>
+                    <div className="tableLoading">Loading requirements...</div>
                   ) : (
-                    <div style={{ overflowX: "auto" }}>
-                      <table className="table">
+                    <div className="tableScroller">
+                      <table className="table table-wide">
                         <thead>
                           <tr>
                             <th>Ingredient</th>
@@ -526,7 +526,7 @@ export default function CateringOrders() {
                           ))}
                           {requirements.rows.length === 0 ? (
                             <tr>
-                              <td colSpan="6" style={{ padding: 12, opacity: 0.7 }}>No recipe-based ingredient requirements yet.</td>
+                              <td colSpan="6" className="tableEmpty">No recipe-based ingredient requirements yet.</td>
                             </tr>
                           ) : null}
                         </tbody>
@@ -535,20 +535,20 @@ export default function CateringOrders() {
                   )}
                 </div>
                 {requirements.warnings.length ? (
-                  <div className="card" style={{ borderColor: "var(--warning)", background: "#FFF9ED" }}>
-                    <div style={{ fontWeight: 800, marginBottom: 8 }}>Warnings</div>
-                    <div style={{ display: "grid", gap: 6 }}>
+                  <div className="card cateringWarningCard">
+                    <div className="cateringWarningTitle">Warnings</div>
+                    <div className="cateringWarningList">
                       {requirements.warnings.map((warning, index) => (
-                        <div key={`${warning.itemId}-${index}`} style={{ color: "var(--text)" }}>
+                        <div key={`${warning.itemId}-${index}`}>
                           {warning.itemName}: {warning.warning}
                         </div>
                       ))}
                     </div>
                   </div>
                 ) : null}
-                <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
-                  <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                    <label style={{ fontWeight: 700 }}>Status</label>
+                <div className="cateringStatusBar">
+                  <div className="cateringStatusActions">
+                    <label>Status</label>
                     <select className="input" value={statusDraft} onChange={(event) => setStatusDraft(event.target.value)}>
                       {STATUSES.map((status) => (
                         <option key={status} value={status}>{status}</option>
@@ -579,7 +579,7 @@ export default function CateringOrders() {
                       </button>
                     ) : null}
                   </div>
-                  <div className="mono" style={{ fontWeight: 800 }}>Total {formatMoney(detail.order.total_amount || 0)}</div>
+                  <div className="mono cateringTotal">Total {formatMoney(detail.order.total_amount || 0)}</div>
                 </div>
               </div>
             ) : null}
@@ -601,9 +601,9 @@ export default function CateringOrders() {
 
 function Info({ label, value }) {
   return (
-    <div style={{ padding: 14, borderRadius: 14, background: "#FBFBFE", border: "1px solid #E7EAF3" }}>
-      <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 6 }}>{label}</div>
-      <div style={{ fontWeight: 800 }}>{value}</div>
+    <div className="infoCardMini">
+      <div className="infoCardMiniLabel">{label}</div>
+      <div className="infoCardMiniValue">{value}</div>
     </div>
   );
 }

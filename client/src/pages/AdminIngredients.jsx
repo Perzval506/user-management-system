@@ -284,25 +284,18 @@ export default function AdminIngredients() {
         </div>
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gap: 12,
-          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-          marginBottom: 14,
-        }}
-      >
-        <div className="card">
-          <div style={{ color: "#6B7280", marginBottom: 4 }}>Active ingredients</div>
-          <div style={{ fontSize: 26, fontWeight: 800 }}>{activeCount}</div>
+      <div className="dashboardStatGrid">
+        <div className="card dashboardMetricCard">
+          <div className="dashboardMetricLabel">Active ingredients</div>
+          <div className="dashboardMetricValue">{activeCount}</div>
         </div>
-        <div className="card">
-          <div style={{ color: "#6B7280", marginBottom: 4 }}>Inactive ingredients</div>
-          <div style={{ fontSize: 26, fontWeight: 800 }}>{inactiveCount}</div>
+        <div className="card dashboardMetricCard">
+          <div className="dashboardMetricLabel">Inactive ingredients</div>
+          <div className="dashboardMetricValue">{inactiveCount}</div>
         </div>
-        <div className="card">
-          <div style={{ color: "#6B7280", marginBottom: 4 }}>How this works</div>
-          <div style={{ lineHeight: 1.5 }}>
+        <div className="card dashboardMetricCard">
+          <div className="dashboardMetricLabel">How this works</div>
+          <div className="dashboardMetricHint">
             Create the ingredient once, define its base unit, then update stock as purchases come in.
           </div>
         </div>
@@ -310,10 +303,10 @@ export default function AdminIngredients() {
 
       <ToDoNext items={items} loading={loading} />
 
-      <div style={{ marginBottom: 12 }}>
-        <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
+      <div className="pageFilterRow">
+        <label className="toggleRow">
           <input type="checkbox" checked={showInactive} onChange={(event) => setShowInactive(event.target.checked)} />
-          Show INACTIVE
+          <span className="toggleText">Show INACTIVE</span>
         </label>
       </div>
 
@@ -321,10 +314,10 @@ export default function AdminIngredients() {
         <div className="tableTopBar">Ingredients</div>
 
         {loading ? (
-          <div style={{ padding: 14 }}>Loading...</div>
+          <div className="tableLoading">Loading...</div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table className="table">
+          <div className="tableScroller">
+            <table className="table table-wide">
               <thead>
                 <tr>
                   <th>Name</th>
@@ -340,7 +333,7 @@ export default function AdminIngredients() {
               <tbody>
                 {visibleItems.map((row) => (
                   <tr key={row.id}>
-                    <td style={{ fontWeight: 800 }}>{row.ingredient_name}</td>
+                    <td className="tableStrong">{row.ingredient_name}</td>
                     <td>{row.category || "-"}</td>
                     <td>{row.base_unit_qty ? `${formatNumber(row.base_unit_qty)} ${row.base_unit}` : row.base_unit || "-"}</td>
                     <td className="text-right mono">{formatNumber(row.quantity ?? 0)}</td>
@@ -366,7 +359,7 @@ export default function AdminIngredients() {
 
                 {visibleItems.length === 0 && (
                   <tr>
-                    <td colSpan="7" style={{ opacity: 0.8, padding: 14 }}>
+                    <td colSpan="7" className="tableEmpty">
                       No ingredients found. Create your first ingredient to start tracking stock and recipes.
                     </td>
                   </tr>
@@ -379,11 +372,11 @@ export default function AdminIngredients() {
 
       {/* UX cleanup: ingredient setup now uses clearer management language and field guidance. */}
       {open && (
-        <div style={modalBackdrop} onClick={closeModal}>
-          <div style={modalCard} onClick={(event) => event.stopPropagation()}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-              <h3 style={{ margin: 0 }}>{mode === "create" ? "Create Ingredient" : `Manage ${form.ingredient_name || "Ingredient"}`}</h3>
-              <button className="btn btn-ghost" onClick={closeModal}>X</button>
+        <div className="modalBackdrop" onClick={closeModal}>
+          <div className="modalCard modalCard-md" onClick={(event) => event.stopPropagation()}>
+            <div className="modalHead">
+              <h3 className="modalTitle">{mode === "create" ? "Create Ingredient" : `Manage ${form.ingredient_name || "Ingredient"}`}</h3>
+              <button className="btn btn-ghost" onClick={closeModal}>Close</button>
             </div>
 
             <form onSubmit={onSubmit} className="formGrid">
@@ -394,7 +387,7 @@ export default function AdminIngredients() {
 
               <div>
                 <label>Category</label>
-                <div className="formRow2" style={{ alignItems: "end" }}>
+                <div className="formRow2 align-end">
                   <select name="category" value={form.category} onChange={onChange} className="input">
                     <option value="">-- select category --</option>
                     {categories.map((category) => (
@@ -411,7 +404,7 @@ export default function AdminIngredients() {
 
               <div>
                 <label>Base unit size</label>
-                <div style={{ color: "#6B7280", marginBottom: 6, fontSize: 13 }}>
+                <div className="mutedHint">
                   Example: 1 kg, 1 pack, or 500 g. Recipes will use this as the ingredient&apos;s starting unit.
                 </div>
                 <div className="formRow2">
@@ -427,7 +420,7 @@ export default function AdminIngredients() {
 
               <div>
                 <label>On-hand quantity</label>
-                <div style={{ color: "#6B7280", marginBottom: 6, fontSize: 13 }}>
+                <div className="mutedHint">
                   Current usable stock in the same base unit you defined above.
                 </div>
                 <input name="quantity" value={form.quantity} onChange={onChange} className="input" type="number" step="0.01" min="0" placeholder="e.g., 5.00" />
@@ -441,7 +434,7 @@ export default function AdminIngredients() {
                 </select>
               </div>
 
-              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <div className="formActions">
                 <button type="button" className="btn btn-ghost" onClick={closeModal}>Cancel</button>
                 <button type="button" className="btn btn-primary" onClick={submitForm}>{mode === "create" ? "Create" : "Save"}</button>
               </div>
@@ -450,14 +443,14 @@ export default function AdminIngredients() {
         </div>
       )}
       {categoryOpen && (
-        <div style={modalBackdrop} onClick={closeCategoryModal}>
-          <div style={modalCardSmall} onClick={(event) => event.stopPropagation()}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-              <h3 style={{ margin: 0 }}>Create Category</h3>
-              <button className="btn btn-ghost" onClick={closeCategoryModal}>X</button>
+        <div className="modalBackdrop" onClick={closeCategoryModal}>
+          <div className="modalCard modalCard-sm" onClick={(event) => event.stopPropagation()}>
+            <div className="modalHead">
+              <h3 className="modalTitle">Create Category</h3>
+              <button className="btn btn-ghost" onClick={closeCategoryModal}>Close</button>
             </div>
 
-            <div className="formGrid" style={{ marginTop: 14 }}>
+            <div className="formGrid modalSection">
               <div>
                 <label>Category name</label>
                 <input
@@ -467,7 +460,7 @@ export default function AdminIngredients() {
                   placeholder="e.g., TAKE OUT CONTAINERS"
                 />
               </div>
-              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <div className="formActions">
                 <button type="button" className="btn btn-ghost" onClick={closeCategoryModal}>Cancel</button>
                 <button type="button" className="btn btn-primary" onClick={submitCategory} disabled={savingCategory}>
                   {savingCategory ? "Saving..." : "Create Category"}
@@ -478,13 +471,13 @@ export default function AdminIngredients() {
         </div>
       )}
       {historyOpen && (
-        <div style={modalBackdrop} onClick={() => setHistoryOpen(false)}>
-          <div style={modalCard} onClick={(event) => event.stopPropagation()}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 12 }}>
+        <div className="modalBackdrop" onClick={() => setHistoryOpen(false)}>
+          <div className="modalCard modalCard-md" onClick={(event) => event.stopPropagation()}>
+            <div className="modalHead">
               <div>
-                <h3 style={{ margin: 0 }}>Ingredient History</h3>
+                <h3 className="modalTitle">Ingredient History</h3>
                 {historyData.ingredient && (
-                  <div style={{ color: "#6B7280", marginTop: 4 }}>
+                  <div className="mutedHint">
                     {historyData.ingredient.ingredient_name} | Current stock: {formatNumber(historyData.ingredient.quantity || 0)} {historyData.ingredient.base_unit || ""}
                   </div>
                 )}
@@ -493,9 +486,9 @@ export default function AdminIngredients() {
             </div>
 
             {historyLoading ? (
-              <div style={{ padding: 12 }}>Loading history...</div>
+              <div className="tableLoading">Loading history...</div>
             ) : (
-              <div style={{ overflowX: "auto" }}>
+              <div className="tableScroller">
                 <table className="table">
                   <thead>
                     <tr>
@@ -520,7 +513,7 @@ export default function AdminIngredients() {
                     ))}
                     {historyData.history.length === 0 && (
                       <tr>
-                        <td colSpan="6" style={{ padding: 12, opacity: 0.7 }}>No purchase history found for this ingredient yet.</td>
+                        <td colSpan="6" className="tableEmpty">No purchase history found for this ingredient yet.</td>
                       </tr>
                     )}
                   </tbody>
@@ -533,7 +526,3 @@ export default function AdminIngredients() {
     </div>
   );
 }
-
-const modalBackdrop = { position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.24)", display: "grid", placeItems: "center", padding: 12, zIndex: 200000 };
-const modalCard = { width: "min(720px, 100%)", background: "white", borderRadius: 14, padding: 16, boxShadow: "0 18px 60px rgba(0,0,0,0.35)" };
-const modalCardSmall = { width: "min(520px, 100%)", background: "white", borderRadius: 14, padding: 16, boxShadow: "0 18px 60px rgba(0,0,0,0.35)" };
