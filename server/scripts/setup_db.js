@@ -188,6 +188,61 @@ async function applyPurchasingAndSalesPatches(conn) {
 
   await ensureTable(
     conn,
+    "purchase_requests",
+    `
+      CREATE TABLE IF NOT EXISTS purchase_requests (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        request_date DATE NOT NULL,
+        needed_by_date DATE NULL,
+        status ENUM('PENDING','APPROVED','REJECTED') NOT NULL DEFAULT 'PENDING',
+        notes VARCHAR(255) NULL,
+        review_notes VARCHAR(255) NULL,
+        catering_order_id BIGINT NULL,
+        requested_by_user_id INT NULL,
+        reviewed_by_user_id INT NULL,
+        reviewed_at DATETIME NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        CONSTRAINT fk_purchase_request_requester
+          FOREIGN KEY (requested_by_user_id) REFERENCES users(id)
+          ON DELETE SET NULL,
+        CONSTRAINT fk_purchase_request_reviewer
+          FOREIGN KEY (reviewed_by_user_id) REFERENCES users(id)
+          ON DELETE SET NULL,
+        UNIQUE KEY uq_purchase_request_catering_order (catering_order_id),
+        INDEX idx_purchase_request_status (status),
+        INDEX idx_purchase_request_requested_by (requested_by_user_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `
+  );
+
+  await ensureTable(
+    conn,
+    "purchase_request_items",
+    `
+      CREATE TABLE IF NOT EXISTS purchase_request_items (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        purchase_request_id INT NOT NULL,
+        ingredient_id INT NOT NULL,
+        ingredient_name VARCHAR(140) NULL,
+        quantity DECIMAL(12,3) NOT NULL DEFAULT 0.000,
+        unit VARCHAR(40) NOT NULL,
+        reason VARCHAR(255) NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT fk_purchase_request_item_request
+          FOREIGN KEY (purchase_request_id) REFERENCES purchase_requests(id)
+          ON DELETE CASCADE,
+        CONSTRAINT fk_purchase_request_item_ingredient
+          FOREIGN KEY (ingredient_id) REFERENCES ingredients(id)
+          ON DELETE RESTRICT,
+        INDEX idx_purchase_request_item_request (purchase_request_id),
+        INDEX idx_purchase_request_item_ingredient (ingredient_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `
+  );
+
+  await ensureTable(
+    conn,
     "purchase_orders",
     `
       CREATE TABLE IF NOT EXISTS purchase_orders (
@@ -269,6 +324,30 @@ async function applyPurchasingAndSalesPatches(conn) {
     `UNIQUE KEY ${escapeIdentifier("uq_purchase_request_catering_order")} (${escapeIdentifier("catering_order_id")})`
   );
 
+  await ensureForeignKey(
+    conn,
+    "purchase_requests",
+    "fk_purchase_request_requester",
+    `FOREIGN KEY (${escapeIdentifier("requested_by_user_id")}) REFERENCES ${escapeIdentifier("users")}(${escapeIdentifier("id")}) ON DELETE SET NULL`
+  );
+  await ensureForeignKey(
+    conn,
+    "purchase_requests",
+    "fk_purchase_request_reviewer",
+    `FOREIGN KEY (${escapeIdentifier("reviewed_by_user_id")}) REFERENCES ${escapeIdentifier("users")}(${escapeIdentifier("id")}) ON DELETE SET NULL`
+  );
+  await ensureForeignKey(
+    conn,
+    "purchase_request_items",
+    "fk_purchase_request_item_request",
+    `FOREIGN KEY (${escapeIdentifier("purchase_request_id")}) REFERENCES ${escapeIdentifier("purchase_requests")}(${escapeIdentifier("id")}) ON DELETE CASCADE`
+  );
+  await ensureForeignKey(
+    conn,
+    "purchase_request_items",
+    "fk_purchase_request_item_ingredient",
+    `FOREIGN KEY (${escapeIdentifier("ingredient_id")}) REFERENCES ${escapeIdentifier("ingredients")}(${escapeIdentifier("id")}) ON DELETE RESTRICT`
+  );
   await ensureForeignKey(
     conn,
     "purchase_order_details",
