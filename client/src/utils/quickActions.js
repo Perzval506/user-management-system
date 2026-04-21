@@ -10,7 +10,7 @@ export const OWNER_QUICK_ACTIONS = [
   { id: "purchaseRequest", to: "/admin/purchase-requests", label: "Purchase Requests", iconKey: "box", description: "Review stockroom requests before purchasing." },
   { id: "purchaseOrder", to: "/admin/purchase-orders", label: "Purchase Order", iconKey: "box", description: "Open purchase order records." },
   { id: "inventory", to: "/admin/inventory/summary", label: "Inventory", iconKey: "box", description: "View inventory summary." },
-  { id: "cateringOrders", to: "/admin/catering-orders", label: "Catering", iconKey: "menu", description: "Build custom event packages and deposits." },
+  { id: "cateringOrders", to: "/admin/catering-orders", label: "Catering", iconKey: "catering", description: "Build custom event packages and deposits." },
   { id: "settings", to: "/settings", label: "Settings", iconKey: "settings", description: "Open system preferences." },
 ];
 

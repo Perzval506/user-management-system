@@ -73,6 +73,14 @@ const Icons = {
       <path d="M6 7h12M6 12h12M6 17h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </svg>
   ),
+  catering: (
+    <svg viewBox="0 0 24 24" fill="none">
+      <path d="M5 13.5h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M7.5 13.5c.5-2.7 2.2-4.5 4.5-4.5s4 1.8 4.5 4.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M12 8V6.2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M9.3 18h5.4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  ),
   panel: (
     <svg viewBox="0 0 24 24" fill="none">
       <rect x="3.8" y="4" width="16.4" height="16" rx="3.2" stroke="currentColor" strokeWidth="1.8" />
@@ -534,7 +542,7 @@ export default function AppShell() {
                   data-nav-label="Catering"
                   className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}
                 >
-                  <span className="ico">{Icons.menu}</span>
+                  <span className="ico">{Icons.catering}</span>
                   <span>Catering</span>
                 </NavLink>
 

@@ -146,10 +146,15 @@ async function buildMenuCostingDetails(connOrPool, menuItem) {
   if (!menuItem?.recipe_version_id) return null;
 
   const ingredientCols = await getColumns("ingredients");
+  const recipeIngredientCols = await getColumns("recipe_ingredients");
   const hasCurrentApCost = Boolean(ingredientCols.current_ap_cost);
+  const hasRecipeLinePrice = Boolean(recipeIngredientCols.price);
+  const hasYieldPercent = Boolean(recipeIngredientCols.yield_percent);
   const apCostSelect = hasCurrentApCost ? ", i.current_ap_cost" : ", NULL AS current_ap_cost";
+  const priceSelect = hasRecipeLinePrice ? "ri.price" : "NULL AS price";
+  const yieldPercentSelect = hasYieldPercent ? "ri.yield_percent" : "NULL AS yield_percent";
   const [ingredients] = await connOrPool.query(
-    `SELECT ri.ingredient_id, ri.qty_used, ri.qty_unit, ri.price, ri.yield_percent,
+    `SELECT ri.ingredient_id, ri.qty_used, ri.qty_unit, ${priceSelect}, ${yieldPercentSelect},
             i.ingredient_name, i.base_unit${apCostSelect}
        FROM recipe_ingredients ri
        JOIN ingredients i ON i.id = ri.ingredient_id

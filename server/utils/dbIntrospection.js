@@ -32,4 +32,12 @@ async function getColumns(tableName) {
   return cols;
 }
 
-module.exports = { tableExists, columnExists, getColumns };
+function resetDbIntrospectionCache(tableName = null) {
+  if (tableName) {
+    columnCache.delete(tableName);
+    return;
+  }
+  columnCache.clear();
+}
+
+module.exports = { tableExists, columnExists, getColumns, resetDbIntrospectionCache };

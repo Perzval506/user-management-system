@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { api } from "../services/api";
 import { formatDateLong } from "../utils/formatters";
 
@@ -12,6 +13,49 @@ const STATUS_OPTIONS = [
   { value: "ACTIVE", label: "ACTIVE" },
   { value: "INACTIVE", label: "INACTIVE" },
 ];
+
+function createEmptyProfileData() {
+  return {
+    full_name: "",
+    email: "",
+    phone: "",
+    address: "",
+    gender: "",
+    birthdate: "",
+    avatar_url: "",
+    emergency_contact_name: "",
+    emergency_contact_phone: "",
+    employee_no: "",
+    position_title: "",
+    hire_date: "",
+    shift_start: "",
+    shift_end: "",
+    notes: "",
+  };
+}
+
+function normalizeProfileData(payload = {}, fallback = {}) {
+  const base = { ...createEmptyProfileData(), ...(fallback || {}) };
+  return {
+    ...base,
+    ...payload,
+    full_name: payload?.full_name ?? base.full_name ?? "",
+    email: payload?.email ?? base.email ?? "",
+    phone: payload?.phone ?? base.phone ?? "",
+    address: payload?.address ?? base.address ?? "",
+    gender: payload?.gender ?? base.gender ?? "",
+    birthdate: payload?.birthdate ?? base.birthdate ?? "",
+    avatar_url: payload?.avatar_url ?? base.avatar_url ?? "",
+    emergency_contact_name: payload?.emergency_contact_name ?? base.emergency_contact_name ?? "",
+    emergency_contact_phone: payload?.emergency_contact_phone ?? base.emergency_contact_phone ?? "",
+    employee_no: payload?.employee_no ?? base.employee_no ?? "",
+    position_title: payload?.position_title ?? base.position_title ?? "",
+    hire_date: payload?.hire_date ?? base.hire_date ?? "",
+    shift_start: payload?.shift_start ?? base.shift_start ?? "",
+    shift_end: payload?.shift_end ?? base.shift_end ?? "",
+    notes: payload?.notes ?? base.notes ?? "",
+  };
+}
 
 function safeCurrentUser() {
   try {
@@ -80,6 +124,8 @@ export default function StaffManagement() {
   const me = safeCurrentUser();
   const createAvatarInputRef = useRef(null);
   const profileAvatarInputRef = useRef(null);
+  const profileNameInputRef = useRef(null);
+  const latestProfileRequestRef = useRef(0);
 
   const [users, setUsers] = useState([]);
   const [flash, setFlash] = useState(null);
@@ -273,39 +319,68 @@ export default function StaffManagement() {
     }
   }
 
-  async function loadProfile(userId) {
+  async function loadProfile(userId, requestId) {
     setProfileLoading(true);
     setProfileError("");
 
     try {
       const res = await api.get(`/profile/staff/${userId}`);
-      setProfileData(res.data || null);
+      if (requestId === latestProfileRequestRef.current) {
+        setProfileData((current) => normalizeProfileData(res.data || {}, current || {}));
+      }
     } catch (err) {
-      setProfileError(err?.response?.data?.message || err.message || "Failed to load profile");
-      setProfileData(null);
+      if (requestId === latestProfileRequestRef.current) {
+        setProfileError(err?.response?.data?.message || err.message || "Failed to load profile");
+      }
     } finally {
-      setProfileLoading(false);
+      if (requestId === latestProfileRequestRef.current) {
+        setProfileLoading(false);
+      }
     }
   }
 
   function openManage(user) {
+    // Prevent accidental click-through re-open/reset while modal is already open.
+    if (profileOpen) {
+      return;
+    }
     // Unified staff workflow: one entry point for profile and account management.
     setEditing({ ...user });
     setEditPassword("");
     setManageTab("profile");
     setProfileMode("view");
     setProfileUserId(user.id);
+    setProfileData(
+      normalizeProfileData(
+        { full_name: user.full_name || "", avatar_url: user.avatar_url || "" },
+        createEmptyProfileData()
+      )
+    );
+    setProfileLoading(true);
     setProfileOpen(true);
-    loadProfile(user.id);
+    const requestId = Date.now() + Math.random();
+    latestProfileRequestRef.current = requestId;
+    loadProfile(user.id, requestId);
   }
 
   function closeProfile() {
+    latestProfileRequestRef.current += 1;
     setProfileOpen(false);
     setManageTab("profile");
     setProfileUserId(null);
-    setProfileData(null);
+    setProfileData(createEmptyProfileData());
     setProfileError("");
+    setProfileLoading(false);
+    setProfileMode("view");
     resetAccountForm();
+  }
+
+  function enableProfileEditing(event) {
+    event?.preventDefault();
+    event?.stopPropagation();
+    setProfileMode("edit");
+    setProfileData((current) => normalizeProfileData(current || {}, createEmptyProfileData()));
+    requestAnimationFrame(() => profileNameInputRef.current?.focus());
   }
 
   async function handleProfileAvatarChange(event) {
@@ -457,10 +532,10 @@ export default function StaffManagement() {
                     <td>{user.created_at ? formatDateLong(user.created_at) : "-"}</td>
                     <td>
                       <div className="rowActions">
-                        <button className="btn" onClick={() => openManage(user)}>
+                        <button type="button" className="btn" onClick={() => openManage(user)}>
                           Manage Staff
                         </button>
-                        <button className="btn" onClick={() => toggleStatus(user)}>
+                        <button type="button" className="btn" onClick={() => toggleStatus(user)}>
                           {user.status === "ACTIVE" ? "Deactivate" : "Activate"}
                         </button>
                       </div>
@@ -595,215 +670,226 @@ export default function StaffManagement() {
         </div>
       )}
 
-      {profileOpen && (
-        <div className="modalBackdrop" onClick={closeProfile}>
-          <div className="modalCard modalCard-lg staffManageModal" onClick={(event) => event.stopPropagation()}>
-            <div className="modalHead">
-              <div>
-                <h3 className="modalTitle">Manage Staff</h3>
-                <div className="mutedHint">
-                  Review profile details or update account access in one place.
+      {profileOpen &&
+        createPortal(
+          <div className="modalBackdrop">
+            <div
+              className="modalCard modalCard-lg staffManageModal"
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="modalHead">
+                <div>
+                  <h3 className="modalTitle">Manage Staff</h3>
+                  <div className="mutedHint">
+                    Review profile details or update account access in one place.
+                  </div>
                 </div>
               </div>
-              <button type="button" className="btn btn-ghost" onClick={closeProfile} aria-label="Close profile modal">Close</button>
-            </div>
 
-            {profileLoading ? (
-              <div className="tableLoading">Loading...</div>
-            ) : (
-              <>
-                <div className="segmentTabs">
-                  <button
-                    type="button"
-                    className={`segmentTab ${manageTab === "profile" ? "active" : ""}`}
-                    onClick={() => setManageTab("profile")}
-                  >
-                    Profile
-                  </button>
-                  <button
-                    type="button"
-                    className={`segmentTab ${manageTab === "account" ? "active" : ""}`}
-                    onClick={() => setManageTab("account")}
-                  >
-                    Account
-                  </button>
-                </div>
+              {profileLoading ? (
+                <div className="tableLoading">Loading...</div>
+              ) : (
+                <>
+                  <div className="segmentTabs">
+                    <button
+                      type="button"
+                      className={`segmentTab ${manageTab === "profile" ? "active" : ""}`}
+                      onClick={() => setManageTab("profile")}
+                    >
+                      Profile
+                    </button>
+                    <button
+                      type="button"
+                      className={`segmentTab ${manageTab === "account" ? "active" : ""}`}
+                      onClick={() => setManageTab("account")}
+                    >
+                      Account
+                    </button>
+                  </div>
 
-                {manageTab === "profile" ? (
-                  <form onSubmit={saveProfile} className="formGrid modalSection">
-                    {profileError && <div className="staffManageError">{profileError}</div>}
+                  {manageTab === "profile" ? (
+                    <form onSubmit={saveProfile} className="formGrid modalSection">
+                      {profileError && <div className="staffManageError">{profileError}</div>}
 
-                    <div>
-                      <label>Full name</label>
-                      <input
-                        className="input"
-                        name="full_name"
-                        value={profileData?.full_name || ""}
-                        onChange={(event) =>
-                          setProfileData((current) => ({ ...(current || {}), full_name: event.target.value }))
-                        }
-                        disabled={profileMode !== "edit"}
-                      />
-                    </div>
+                      <div>
+                        <label>Full name</label>
+                        <input
+                          ref={profileNameInputRef}
+                          className="input"
+                          name="full_name"
+                          value={profileData?.full_name || ""}
+                          onChange={(event) =>
+                            setProfileData((current) => ({ ...(current || {}), full_name: event.target.value }))
+                          }
+                          disabled={profileMode !== "edit"}
+                        />
+                      </div>
 
-                    <div>
-                      <label>Email</label>
-                      <input
-                        className="input"
-                        name="email"
-                        value={profileData?.email || ""}
-                        onChange={(event) =>
-                          setProfileData((current) => ({ ...(current || {}), email: event.target.value }))
-                        }
-                        disabled={profileMode !== "edit"}
-                      />
-                    </div>
+                      <div>
+                        <label>Email</label>
+                        <input
+                          className="input"
+                          name="email"
+                          value={profileData?.email || ""}
+                          onChange={(event) =>
+                            setProfileData((current) => ({ ...(current || {}), email: event.target.value }))
+                          }
+                          disabled={profileMode !== "edit"}
+                        />
+                      </div>
 
-                    <div>
-                      <label>Phone</label>
-                      <input
-                        className="input"
-                        name="phone"
-                        value={profileData?.phone || ""}
-                        onChange={(event) =>
-                          setProfileData((current) => ({ ...(current || {}), phone: event.target.value }))
-                        }
-                        disabled={profileMode !== "edit"}
-                      />
-                    </div>
+                      <div>
+                        <label>Phone</label>
+                        <input
+                          className="input"
+                          name="phone"
+                          value={profileData?.phone || ""}
+                          onChange={(event) =>
+                            setProfileData((current) => ({ ...(current || {}), phone: event.target.value }))
+                          }
+                          disabled={profileMode !== "edit"}
+                        />
+                      </div>
 
-                    <div>
-                      <label>Profile photo</label>
-                      <div className="staffAvatarCard">
-                        <AvatarPreview src={profileData?.avatar_url} size={84} alt="Staff avatar preview" />
-                        {!profileData?.avatar_url && (
-                          <div className="staffHintText">
-                            No profile photo saved yet.
-                          </div>
-                        )}
-                        {profileMode === "edit" ? (
-                          <>
-                            <input
-                              ref={profileAvatarInputRef}
-                              type="file"
-                              accept="image/*"
-                              onChange={handleProfileAvatarChange}
-                              style={{ display: "none" }}
-                            />
-                            <button
-                              type="button"
-                              className="btn"
-                              onClick={() => profileAvatarInputRef.current?.click()}
-                              disabled={profileAvatarUploading}
-                            >
-                              {profileAvatarUploading ? "Uploading..." : profileData?.avatar_url ? "Replace Photo" : "Choose Photo"}
-                            </button>
+                      <div>
+                        <label>Profile photo</label>
+                        <div className="staffAvatarCard">
+                          <AvatarPreview src={profileData?.avatar_url} size={84} alt="Staff avatar preview" />
+                          {!profileData?.avatar_url && (
                             <div className="staffHintText">
-                              {profileAvatarUploading ? "Uploading avatar..." : "Optional. Upload a photo now or leave it unchanged."}
+                              No profile photo saved yet.
                             </div>
-                            {profileData?.avatar_url && (
-                              <button type="button" className="btn btn-ghost" onClick={clearProfileAvatar}>
-                                Remove Photo
+                          )}
+                          {profileMode === "edit" ? (
+                            <>
+                              <input
+                                ref={profileAvatarInputRef}
+                                type="file"
+                                accept="image/*"
+                                onChange={handleProfileAvatarChange}
+                                style={{ display: "none" }}
+                              />
+                              <button
+                                type="button"
+                                className="btn"
+                                onClick={() => profileAvatarInputRef.current?.click()}
+                                disabled={profileAvatarUploading}
+                              >
+                                {profileAvatarUploading ? "Uploading..." : profileData?.avatar_url ? "Replace Photo" : "Choose Photo"}
                               </button>
-                            )}
-                          </>
+                              <div className="staffHintText">
+                                {profileAvatarUploading ? "Uploading avatar..." : "Optional. Upload a photo now or leave it unchanged."}
+                              </div>
+                              {profileData?.avatar_url && (
+                                <button type="button" className="btn btn-ghost" onClick={clearProfileAvatar}>
+                                  Remove Photo
+                                </button>
+                              )}
+                            </>
+                          ) : (
+                            <div className="staffHintText">Stored profile image</div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label>Address</label>
+                        <input
+                          className="input"
+                          name="address"
+                          value={profileData?.address || ""}
+                          onChange={(event) =>
+                            setProfileData((current) => ({ ...(current || {}), address: event.target.value }))
+                          }
+                          disabled={profileMode !== "edit"}
+                        />
+                      </div>
+
+                      <div className="formActions">
+                        <button type="button" onClick={closeProfile} className="btn btn-ghost">
+                          Close
+                        </button>
+                        {profileMode === "edit" ? (
+                          <button type="submit" className="btn btn-primary" disabled={profileSaving || profileAvatarUploading}>
+                            {profileSaving ? "Saving..." : "Save Profile"}
+                          </button>
                         ) : (
-                          <div className="staffHintText">Stored profile image</div>
+                          <button
+                            type="button"
+                            onMouseDown={(event) => event.stopPropagation()}
+                            onClick={enableProfileEditing}
+                            className="btn"
+                          >
+                            Edit Profile and Photo
+                          </button>
                         )}
                       </div>
-                    </div>
+                    </form>
+                  ) : (
+                    <form onSubmit={saveEdit} className="formGrid modalSection">
+                      <div>
+                        <label>Full name</label>
+                        <input
+                          className="input"
+                          value={editing?.full_name || ""}
+                          onChange={(event) => setEditing((current) => ({ ...(current || {}), full_name: event.target.value }))}
+                          required
+                        />
+                      </div>
 
-                    <div>
-                      <label>Address</label>
-                      <input
-                        className="input"
-                        name="address"
-                        value={profileData?.address || ""}
-                        onChange={(event) =>
-                          setProfileData((current) => ({ ...(current || {}), address: event.target.value }))
-                        }
-                        disabled={profileMode !== "edit"}
-                      />
-                    </div>
+                      <div>
+                        <label>Username</label>
+                        <input
+                          className="input"
+                          value={editing?.username || ""}
+                          onChange={(event) => setEditing((current) => ({ ...(current || {}), username: event.target.value }))}
+                          required
+                        />
+                      </div>
 
-                    <div className="formActions">
-                      <button type="button" onClick={closeProfile} className="btn btn-ghost">
-                        Close
-                      </button>
-                      {profileMode === "edit" ? (
-                        <button type="submit" className="btn btn-primary" disabled={profileSaving || profileAvatarUploading}>
-                          {profileSaving ? "Saving..." : "Save Profile"}
+                      <div>
+                        <label>Role</label>
+                        <select
+                          className="input"
+                          value={editing?.role || ""}
+                          onChange={(event) => setEditing((current) => ({ ...(current || {}), role: event.target.value }))}
+                        >
+                          {ROLE_OPTIONS.map((role) => (
+                            <option key={role.value} value={role.value}>
+                              {role.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label>New password</label>
+                        <input
+                          className="input"
+                          placeholder="Leave blank to keep the current password"
+                          type="password"
+                          value={editPassword}
+                          onChange={(event) => setEditPassword(event.target.value)}
+                        />
+                      </div>
+
+                      <div className="formActions">
+                        <button type="button" onClick={closeProfile} className="btn btn-ghost">
+                          Close
                         </button>
-                      ) : (
-                        <button type="button" onClick={() => setProfileMode("edit")} className="btn">
-                          Edit Profile and Photo
+                        <button type="submit" className="btn btn-primary">
+                          Save Account
                         </button>
-                      )}
-                    </div>
-                  </form>
-                ) : (
-                  <form onSubmit={saveEdit} className="formGrid modalSection">
-                    <div>
-                      <label>Full name</label>
-                      <input
-                        className="input"
-                        value={editing?.full_name || ""}
-                        onChange={(event) => setEditing((current) => ({ ...(current || {}), full_name: event.target.value }))}
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label>Username</label>
-                      <input
-                        className="input"
-                        value={editing?.username || ""}
-                        onChange={(event) => setEditing((current) => ({ ...(current || {}), username: event.target.value }))}
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label>Role</label>
-                      <select
-                        className="input"
-                        value={editing?.role || ""}
-                        onChange={(event) => setEditing((current) => ({ ...(current || {}), role: event.target.value }))}
-                      >
-                        {ROLE_OPTIONS.map((role) => (
-                          <option key={role.value} value={role.value}>
-                            {role.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label>New password</label>
-                      <input
-                        className="input"
-                        placeholder="Leave blank to keep the current password"
-                        type="password"
-                        value={editPassword}
-                        onChange={(event) => setEditPassword(event.target.value)}
-                      />
-                    </div>
-
-                    <div className="formActions">
-                      <button type="button" onClick={closeProfile} className="btn btn-ghost">
-                        Close
-                      </button>
-                      <button type="submit" className="btn btn-primary">
-                        Save Account
-                      </button>
-                    </div>
-                  </form>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-      )}
+                      </div>
+                    </form>
+                  )}
+                </>
+              )}
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

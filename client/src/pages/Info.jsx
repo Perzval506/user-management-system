@@ -1,21 +1,41 @@
+import { useNavigate } from "react-router-dom";
+import "../styles/landing.css";
+
 export default function Info() {
+  const navigate = useNavigate();
+
   return (
-    <div className="authShell">
-      <div className="card card-pad authCard infoCard">
-        <h1 className="h1">System Info</h1>
-        <p className="muted authSub">
-          Boyd's Pizza House User Management System (UMS)
-        </p>
+    <div className="lp lp-infoPage">
+      <div className="lp-infoWrap">
+        <button
+          type="button"
+          className="lp-backBtn"
+          onClick={() => navigate(-1)}
+          aria-label="Go back"
+        >
+          <span aria-hidden="true">←</span>
+          Back
+        </button>
 
-        <div className="infoGrid">
-          <div className="card card-pad infoTile">
-            <div className="small muted">Access</div>
-            <div className="infoTileValue">OWNER, CASHIER, STOCKROOM_STAFF</div>
-          </div>
+        <div className="lp-infoPanel">
+          <h1 className="lp-titleInfo">System Info</h1>
+          <p className="lp-subtitleInfo">
+            Boyd&apos;s Pizza House User Management System
+          </p>
 
-          <div className="card card-pad infoTile">
-            <div className="small muted">Purpose</div>
-            <div className="infoTileValue">Account management + audit logs</div>
+          <div className="lp-infoCard">
+            <div className="lp-infoRow">
+              <span className="lp-label">Access Roles</span>
+              <span className="lp-value">OWNER, CASHIER, STOCKROOM_STAFF</span>
+            </div>
+            <div className="lp-infoRow">
+              <span className="lp-label">Purpose</span>
+              <span className="lp-value">Account management and audit logs</span>
+            </div>
+            <div className="lp-infoRow">
+              <span className="lp-label">Focus</span>
+              <span className="lp-value">Reliable day-to-day restaurant operations</span>
+            </div>
           </div>
         </div>
       </div>
