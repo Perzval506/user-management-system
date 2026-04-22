@@ -19,6 +19,7 @@ const cateringOrderRoutes = require("./routes/cateringOrders");
 const inventoryRoutes = require("./routes/inventory");
 const salesRoutes = require("./routes/sales");
 const auditLogRoutes = require("./routes/auditLogs");
+const reportRoutes = require("./routes/reports");
 
 const app = express();
 
@@ -57,6 +58,7 @@ app.use("/api/catering-orders", cateringOrderRoutes);
 app.use("/api/inventory", inventoryRoutes);
 app.use("/api/sales", salesRoutes);
 app.use("/api/audit-logs", auditLogRoutes);
+app.use("/api/reports", reportRoutes);
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

@@ -19,6 +19,7 @@ import Staff from "./pages/Staff.jsx";
 
 import AuditLogs from "./pages/AuditLogs.jsx";
 import Settings from "./pages/Settings.jsx";
+import Reports from "./pages/Reports.jsx";
 
 import ProtectedRoute from "./routes/ProtectedRoute.jsx";
 import AppShell from "./components/AppShell.jsx";
@@ -34,10 +35,10 @@ export default function App() {
       {/* Owner area */}
       <Route element={<ProtectedRoute allowedRoles={["OWNER"]} />}>
         <Route element={<AppShell />}>
-          {/* Dashboard (empty) */}
+          {/* Owner dashboard */}
           <Route path="/admin" element={<OwnerDashboard />} />
 
-          {/* ✅ Owner Staff Management (User List + Create User) */}
+          {/* Owner staff management */}
           <Route path="/admin/staff" element={<StaffManagement />} />
 
           {/* Items */}
@@ -59,6 +60,7 @@ export default function App() {
           <Route path="/admin/menu/recipes" element={<Navigate to="/admin/menu/manage" replace />} />
 
           <Route path="/audit" element={<AuditLogs />} />
+          <Route path="/admin/reports" element={<Reports />} />
           <Route path="/settings" element={<Settings />} />
         </Route>
       </Route>
