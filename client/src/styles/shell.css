@@ -112,7 +112,7 @@ body{
 .shell{
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: 260px minmax(0, 1fr);
   --modal-left-offset: 260px;
   color: var(--text);
   font-family: var(--font);
@@ -130,7 +130,7 @@ body{
 }
 
 .shell.sidebar-collapsed{
-  grid-template-columns: 92px 1fr;
+  grid-template-columns: 92px minmax(0, 1fr);
   --modal-left-offset: 92px;
 }
 .sidebar{
@@ -936,6 +936,7 @@ body{
   padding: 24px clamp(16px, 2.4vw, 32px) 32px;
   max-width: none;
   width: 100%;
+  min-width: 0;
 }
 
 .shell.sidebar-collapsed .content{
@@ -968,6 +969,7 @@ body{
 .page {
   width: 100%;
   max-width: none;
+  min-width: 0;
 }
 
 .shell.sidebar-collapsed .page{
@@ -1683,6 +1685,7 @@ body{
   overflow: hidden;
   background: var(--surface);
   box-shadow: var(--shadow);
+  min-width: 0;
   transition: border-color 180ms ease, box-shadow 180ms ease;
 }
 
@@ -1694,10 +1697,15 @@ body{
 .tableTopBar {
   padding: 16px 20px;
   font-weight: 600;
-  background: #f4f7fb;
-  border-bottom: 1px solid var(--border);
+  background: #dfe8f8;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.44);
   font-size: 18px;
   letter-spacing: 0.01em;
+}
+
+.tableTopBar + .tableScroller,
+.tableTopBar + .table{
+  background: #ffffff;
 }
 
 .table {
@@ -1719,30 +1727,35 @@ body{
   font-size: 13px;
   font-weight: 600;
   color: #5b677f;
-  background: #f4f7fb;
+  background: #eaf1ff;
   padding: 16px 20px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.36);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   white-space: nowrap;
 }
 
+.tableTopBar + .tableScroller .table thead th{
+  border-top: 1px solid rgba(148, 163, 184, 0.24);
+}
+
 .table td {
   padding: 18px 20px;
-  border-top: 1px solid rgba(148, 163, 184, 0.24);
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
   font-size: 15.5px;
   line-height: 1.45;
   vertical-align: middle;
   white-space: normal;
+  background: #ffffff;
   transition: background-color 140ms ease;
 }
 
 .table tbody tr:nth-child(even) td {
-  background: rgba(244, 247, 251, 0.84);
+  background: #f7faff;
 }
 
 .table tr:hover td {
-  background: rgba(var(--primary-rgb), 0.1);
+  background: rgba(var(--primary-rgb), 0.12);
 }
 
 .tableLoading{
@@ -2536,11 +2549,22 @@ html[data-theme="dark"] .surface{
 }
 
 html[data-theme="dark"] .tableTopBar{
-  background: var(--surface2);
+  background: rgba(26, 39, 62, 0.96);
+  border-bottom-color: rgba(100, 116, 139, 0.5);
+}
+
+html[data-theme="dark"] .tableTopBar + .tableScroller,
+html[data-theme="dark"] .tableTopBar + .table{
+  background: rgba(16, 25, 42, 0.92);
+}
+
+html[data-theme="dark"] .table td{
+  background: rgba(18, 29, 47, 0.9);
+  border-top-color: rgba(100, 116, 139, 0.34);
 }
 
 html[data-theme="dark"] .table tbody tr:nth-child(even) td{
-  background: rgba(255, 255, 255, 0.025);
+  background: rgba(24, 38, 60, 0.9);
 }
 
 html[data-theme="dark"] .btn{
@@ -2673,11 +2697,17 @@ html[data-theme="dark"] .logoutBtn{
 }
 
 html[data-theme="dark"] .table th{
-  background: rgba(42, 54, 80, 0.9);
+  background: rgba(38, 54, 82, 0.96);
+  border-bottom-color: rgba(100, 116, 139, 0.5);
+  color: #c6d0e0;
+}
+
+html[data-theme="dark"] .tableTopBar + .tableScroller .table thead th{
+  border-top-color: rgba(100, 116, 139, 0.36);
 }
 
 html[data-theme="dark"] .table tr:hover td{
-  background: rgba(var(--primary-rgb), 0.2);
+  background: rgba(var(--primary-rgb), 0.22);
 }
 
 html[data-theme="dark"] .watchlistItem,
