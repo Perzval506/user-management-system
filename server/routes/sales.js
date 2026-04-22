@@ -5,6 +5,12 @@ const { tableExists, getColumns } = require("../utils/dbIntrospection");
 const { buildActor, writeAuditLog } = require("../utils/auditLog");
 const { convertQuantity } = require("../utils/unitConversion");
 const { writeInventoryMovement } = require("../utils/inventoryMovements");
+const {
+  STOCKROOM,
+  supportsInventoryLocations,
+  consumeIngredientLocationBalance,
+  adjustIngredientLocationBalance,
+} = require("../utils/inventoryLocations");
 
 const router = express.Router();
 
@@ -480,11 +486,22 @@ router.post("/", async (req, res) => {
     const decrementStockSql = ingredientCols.last_updated
       ? "UPDATE ingredients SET quantity = quantity - ?, last_updated = NOW() WHERE id=?"
       : "UPDATE ingredients SET quantity = quantity - ? WHERE id=?";
+    const locationBalancesSupported = await supportsInventoryLocations();
     for (const [ingredientId, usage] of Object.entries(inventoryTotals)) {
       await conn.query(decrementStockSql, [
         usage.qtyUsedBaseUnit,
         Number(ingredientId),
       ]);
+      let sourceLabel = null;
+      if (locationBalancesSupported) {
+        const locationUsage = await consumeIngredientLocationBalance(
+          conn,
+          Number(ingredientId),
+          usage.qtyUsedBaseUnit,
+          usage.currentStock
+        );
+        sourceLabel = locationUsage?.sourceLabel || null;
+      }
       await writeInventoryMovement(
         {
           ingredient_id: Number(ingredientId),
@@ -495,7 +512,7 @@ router.post("/", async (req, res) => {
           source_module: "SALES",
           reference_type: "sales_transaction",
           reference_id: txId,
-          notes: `Sale #${txId} consumed inventory for ${usage.ingredientName}.`,
+          notes: `Sale #${txId} consumed inventory for ${usage.ingredientName}.${sourceLabel ? ` Source: ${sourceLabel}.` : ""}`,
           created_by_user_id: req.user?.id || null,
         },
         conn
@@ -569,11 +586,21 @@ router.patch("/:id/void", async (req, res) => {
     const incrementStockSql = ingredientCols.last_updated
       ? "UPDATE ingredients SET quantity = quantity + ?, last_updated = NOW() WHERE id=?"
       : "UPDATE ingredients SET quantity = quantity + ? WHERE id=?";
+    const locationBalancesSupported = await supportsInventoryLocations();
     for (const usage of usageRows) {
       await conn.query(incrementStockSql, [
         Number(usage.qty_used_base_unit || 0),
         usage.ingredient_id,
       ]);
+      if (locationBalancesSupported) {
+        await adjustIngredientLocationBalance(
+          conn,
+          usage.ingredient_id,
+          STOCKROOM,
+          Number(usage.qty_used_base_unit || 0),
+          Number(usage.quantity || 0) + Number(usage.qty_used_base_unit || 0)
+        );
+      }
       await writeInventoryMovement(
         {
           ingredient_id: usage.ingredient_id,
@@ -584,7 +611,7 @@ router.patch("/:id/void", async (req, res) => {
           source_module: "SALES",
           reference_type: "sales_transaction",
           reference_id: saleId,
-          notes: `Voided sale #${saleId} and restored inventory for ${usage.ingredient_name}.`,
+          notes: `Voided sale #${saleId} and restored inventory for ${usage.ingredient_name}${locationBalancesSupported ? ` to ${STOCKROOM}` : ""}.`,
           created_by_user_id: req.user?.id || null,
         },
         conn

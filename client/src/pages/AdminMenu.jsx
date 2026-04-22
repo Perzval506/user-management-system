@@ -17,6 +17,16 @@ const emptyForm = {
   delivery_packaging_cost: "0.00",
 };
 
+const emptyPromoForm = {
+  promo_name: "",
+  promo_type: "PERCENT",
+  promo_value: "",
+  start_date: new Date().toISOString().slice(0, 10),
+  end_date: new Date().toISOString().slice(0, 10),
+  status: "ACTIVE",
+  notes: "",
+};
+
 const MANAGE_SECTIONS = {
   details: "details",
   pricing: "pricing",
@@ -37,6 +47,11 @@ export default function AdminMenu() {
   const [editingItem, setEditingItem] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [priceValue, setPriceValue] = useState("");
+  const [priceReason, setPriceReason] = useState("");
+  const [priceHistory, setPriceHistory] = useState([]);
+  const [promotions, setPromotions] = useState([]);
+  const [promoForm, setPromoForm] = useState(emptyPromoForm);
+  const [detailsLoading, setDetailsLoading] = useState(false);
 
   const [recipeCreateForm, setRecipeCreateForm] = useState({
     recipe_name: "",
@@ -85,6 +100,10 @@ export default function AdminMenu() {
     setEditingItem(null);
     setActiveSection(MANAGE_SECTIONS.details);
     setPriceValue("");
+    setPriceReason("");
+    setPriceHistory([]);
+    setPromotions([]);
+    setPromoForm(emptyPromoForm);
     setForm(emptyForm);
     setRecipeCreateForm({ recipe_name: "", recipe_description: "" });
     setOpen(true);
@@ -95,6 +114,8 @@ export default function AdminMenu() {
     setEditingItem(row);
     setActiveSection(section);
     setPriceValue(row?.selling_price != null ? String(row.selling_price) : "");
+    setPriceReason("");
+    setPromoForm(emptyPromoForm);
     setForm({
       menu_name: row.menu_name ?? "",
       description: row.description ?? "",
@@ -112,6 +133,27 @@ export default function AdminMenu() {
       recipe_description: row.description || "",
     });
     setOpen(true);
+    loadMenuExtras(row.id);
+  }
+
+  async function loadMenuExtras(menuId) {
+    setDetailsLoading(true);
+    try {
+      const [priceHistoryRes, promotionsRes] = await Promise.all([
+        api.get(`/menu/${menuId}/price-history`),
+        api.get(`/menu/${menuId}/promotions`),
+      ]);
+      setPriceHistory(priceHistoryRes.data || []);
+      setPromotions(promotionsRes.data || []);
+    } catch (error) {
+      toast.push({
+        type: "error",
+        title: "Load failed",
+        message: error?.response?.data?.error || error.message || "Failed to load menu details.",
+      });
+    } finally {
+      setDetailsLoading(false);
+    }
   }
 
   function closeModal() {
@@ -120,6 +162,10 @@ export default function AdminMenu() {
     setEditingItem(null);
     setActiveSection(MANAGE_SECTIONS.details);
     setPriceValue("");
+    setPriceReason("");
+    setPriceHistory([]);
+    setPromotions([]);
+    setPromoForm(emptyPromoForm);
     setForm(emptyForm);
     setRecipeCreateForm({ recipe_name: "", recipe_description: "" });
   }
@@ -276,21 +322,72 @@ export default function AdminMenu() {
     }
 
     try {
-      await api.post(`/menu/${editingItem.id}/price`, { selling_price: parsedPrice });
+      await api.post(`/menu/${editingItem.id}/price`, { selling_price: parsedPrice, reason: priceReason });
       toast.push({
         type: "success",
         title: "Updated",
         message: "Price updated successfully.",
       });
       await load();
+      await loadMenuExtras(editingItem.id);
       setEditingItem((current) =>
         current ? { ...current, selling_price: parsedPrice } : current
       );
+      setPriceReason("");
     } catch (error) {
       toast.push({
         type: "error",
         title: "Update failed",
         message: error?.response?.data?.message || "Price update failed",
+      });
+    }
+  }
+
+  async function markPriceSynced(historyId) {
+    if (!editingItem) return;
+    try {
+      await api.post(`/menu/${editingItem.id}/price-history/${historyId}/mark-synced`);
+      toast.push({
+        type: "success",
+        title: "Marked synced",
+        message: "Manual POS sync status was updated.",
+      });
+      await loadMenuExtras(editingItem.id);
+    } catch (error) {
+      toast.push({
+        type: "error",
+        title: "Sync failed",
+        message: error?.response?.data?.error || error.message || "Failed to mark price as synced.",
+      });
+    }
+  }
+
+  async function submitPromotion() {
+    if (!editingItem) return;
+    const promoValue = parseFloat(promoForm.promo_value);
+    if (!promoForm.promo_name.trim()) {
+      return toast.push({ type: "error", title: "Missing field", message: "Promotion name is required." });
+    }
+    if (!Number.isFinite(promoValue) || promoValue < 0) {
+      return toast.push({ type: "error", title: "Invalid value", message: "Promotion value must be 0 or greater." });
+    }
+    try {
+      await api.post(`/menu/${editingItem.id}/promotions`, {
+        ...promoForm,
+        promo_value: promoValue,
+      });
+      toast.push({
+        type: "success",
+        title: "Promotion saved",
+        message: "Promotion created successfully.",
+      });
+      setPromoForm(emptyPromoForm);
+      await loadMenuExtras(editingItem.id);
+    } catch (error) {
+      toast.push({
+        type: "error",
+        title: "Promotion failed",
+        message: error?.response?.data?.error || error.message || "Failed to create promotion",
       });
     }
   }
@@ -889,6 +986,16 @@ export default function AdminMenu() {
                 </div>
 
                 <div>
+                  <label>Reason for change (optional)</label>
+                  <input
+                    className="input"
+                    value={priceReason}
+                    onChange={(event) => setPriceReason(event.target.value)}
+                    placeholder="Why was the price changed?"
+                  />
+                </div>
+
+                <div>
                   <label>
                     Target food cost (decimal)
                     <span className="inlineMuted"> - 0.30 = 30%</span>
@@ -973,6 +1080,172 @@ export default function AdminMenu() {
                   <button className="btn btn-primary" onClick={submitPrice}>
                     Save Price
                   </button>
+                </div>
+
+                <div className="card" style={{ padding: 12 }}>
+                  <div className="tableTopBar">Price History</div>
+                  {detailsLoading ? (
+                    <div className="tableLoading">Loading history...</div>
+                  ) : (
+                    <div className="tableScroller">
+                      <table className="table">
+                        <thead>
+                          <tr>
+                            <th>Date</th>
+                            <th className="text-right">Selling Price</th>
+                            <th>Reason</th>
+                            <th>Sync Status</th>
+                            <th>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {priceHistory.map((entry) => (
+                            <tr key={entry.id}>
+                              <td>{formatDateLong(entry.effective_date || entry.created_at)}</td>
+                              <td className="text-right mono">{formatMoney(entry.selling_price)}</td>
+                              <td>{entry.notes || entry.change_reason || "-"}</td>
+                              <td>
+                                <span className={`badge ${entry.synced_to_pos ? "badge-active" : "badge-pending"}`}>
+                                  {entry.synced_to_pos ? "Synced" : "Pending"}
+                                </span>
+                              </td>
+                              <td>
+                                {!entry.synced_to_pos && (
+                                  <button type="button" className="btn btn-ghost" onClick={() => markPriceSynced(entry.id)}>
+                                    Mark Synced
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                          {priceHistory.length === 0 && (
+                            <tr><td colSpan="5" className="tableEmpty">No price history recorded yet.</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                <div className="card" style={{ padding: 12 }}>
+                  <div className="tableTopBar">Promotions</div>
+                  <div className="formGrid">
+                    <div className="formRow2">
+                      <div>
+                        <label>Promo name</label>
+                        <input
+                          className="input"
+                          value={promoForm.promo_name}
+                          onChange={(event) => setPromoForm((current) => ({ ...current, promo_name: event.target.value }))}
+                          placeholder="e.g., Lunch Promo"
+                        />
+                      </div>
+                      <div>
+                        <label>Promo type</label>
+                        <select
+                          className="input"
+                          value={promoForm.promo_type}
+                          onChange={(event) => setPromoForm((current) => ({ ...current, promo_type: event.target.value }))}
+                        >
+                          <option value="PERCENT">PERCENT</option>
+                          <option value="FIXED">FIXED</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="formRow2">
+                      <div>
+                        <label>Promo value</label>
+                        <input
+                          className="input"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={promoForm.promo_value}
+                          onChange={(event) => setPromoForm((current) => ({ ...current, promo_value: event.target.value }))}
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <div>
+                        <label>Status</label>
+                        <select
+                          className="input"
+                          value={promoForm.status}
+                          onChange={(event) => setPromoForm((current) => ({ ...current, status: event.target.value }))}
+                        >
+                          <option value="SCHEDULED">SCHEDULED</option>
+                          <option value="ACTIVE">ACTIVE</option>
+                          <option value="ENDED">ENDED</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="formRow2">
+                      <div>
+                        <label>Start date</label>
+                        <input
+                          className="input"
+                          type="date"
+                          value={promoForm.start_date}
+                          onChange={(event) => setPromoForm((current) => ({ ...current, start_date: event.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label>End date</label>
+                        <input
+                          className="input"
+                          type="date"
+                          value={promoForm.end_date}
+                          onChange={(event) => setPromoForm((current) => ({ ...current, end_date: event.target.value }))}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label>Notes (optional)</label>
+                      <input
+                        className="input"
+                        value={promoForm.notes}
+                        onChange={(event) => setPromoForm((current) => ({ ...current, notes: event.target.value }))}
+                        placeholder="Optional promo note"
+                      />
+                    </div>
+                    <div className="formActions">
+                      <button type="button" className="btn btn-primary" onClick={submitPromotion}>
+                        Save Promotion
+                      </button>
+                    </div>
+                  </div>
+                  <div className="tableScroller" style={{ marginTop: 12 }}>
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>Name</th>
+                          <th>Type</th>
+                          <th className="text-right">Value</th>
+                          <th className="text-right">Discounted Price</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {promotions.map((promo) => (
+                          <tr key={promo.id}>
+                            <td>{promo.promo_name}</td>
+                            <td>{promo.promo_type}</td>
+                            <td className="text-right mono">
+                              {promo.promo_type === "PERCENT" ? `${formatNumber(promo.promo_value)}%` : formatMoney(promo.promo_value)}
+                            </td>
+                            <td className="text-right mono">{promo.discounted_price != null ? formatMoney(promo.discounted_price) : "-"}</td>
+                            <td>
+                              <span className={`badge ${promo.status === "ACTIVE" ? "badge-active" : "badge-pending"}`}>
+                                {promo.status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                        {promotions.length === 0 && (
+                          <tr><td colSpan="5" className="tableEmpty">No promotions recorded yet.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
             )}

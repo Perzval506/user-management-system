@@ -3,11 +3,21 @@ const pool = require("../db");
 const router = express.Router();
 const { getColumns, tableExists } = require("../utils/dbIntrospection");
 const { requireAuth, requireAnyRole } = require("../middleware/auth");
+const { buildActor, writeAuditLog } = require("../utils/auditLog");
+const { writeInventoryMovement } = require("../utils/inventoryMovements");
+const {
+  STOCKROOM,
+  SHELF,
+  supportsInventoryLocations,
+  getIngredientLocationBalances,
+  setIngredientLocationBalance,
+} = require("../utils/inventoryLocations");
 
 router.use(requireAuth, requireAnyRole(["OWNER", "STOCKROOM_STAFF"]));
 
 const LOW_STOCK_THRESHOLD = 5;
 const WEEKLY_REVIEW_DAYS = 7;
+const ADJUSTMENT_TYPES = new Set(["SPOILAGE", "WASTAGE", "DAMAGED", "MANUAL_ADD", "MANUAL_REDUCE"]);
 
 function reviewWindowDates() {
   const end = new Date();
@@ -21,27 +31,62 @@ function normalizeKey(value) {
   return String(value || "").trim().toLowerCase();
 }
 
-// Inventory summary: base quantity + purchases (optional future: minus usage)
+function round2(value) {
+  return Number(Number(value || 0).toFixed(2));
+}
+
+function normalizeLocation(value) {
+  const normalized = String(value || "").trim().toUpperCase();
+  if (normalized === STOCKROOM || normalized === SHELF) return normalized;
+  return null;
+}
+
+async function fetchInventoryRows(connOrPool) {
+  const ingredientCols = await getColumns("ingredients");
+  const hasQuantity = Boolean(ingredientCols.quantity);
+  const hasPurchaseOrderDetails = await tableExists("purchase_order_details");
+  const totalStockSql = hasQuantity
+    ? "COALESCE(i.quantity, 0)"
+    : hasPurchaseOrderDetails
+      ? "COALESCE((SELECT SUM(pod.quantity) FROM purchase_order_details pod WHERE pod.ingredient_id = i.id), 0)"
+      : "0";
+
+  const [rows] = await connOrPool.query(`
+    SELECT i.id,
+           i.ingredient_name,
+           i.category,
+           i.base_unit,
+           ${totalStockSql} AS total_stock
+      FROM ingredients i
+     ORDER BY i.ingredient_name ASC
+  `);
+
+  const locationsSupported = await supportsInventoryLocations();
+  if (!locationsSupported) {
+    return rows.map((row) => ({
+      ...row,
+      locations_supported: false,
+      stockroom_qty: Number(row.total_stock || 0),
+      shelf_qty: 0,
+    }));
+  }
+
+  const enriched = [];
+  for (const row of rows) {
+    const balances = await getIngredientLocationBalances(connOrPool, row.id, row.total_stock);
+    enriched.push({
+      ...row,
+      locations_supported: balances.supported,
+      stockroom_qty: balances.stockroom,
+      shelf_qty: balances.shelf,
+    });
+  }
+  return enriched;
+}
+
 router.get("/summary", async (_req, res) => {
   try {
-    const ingredientCols = await getColumns("ingredients");
-    const hasQuantity = Boolean(ingredientCols.quantity);
-    const hasPurchaseOrderDetails = await tableExists("purchase_order_details");
-    const totalStockSql = hasQuantity
-      ? "COALESCE(i.quantity, 0)"
-      : hasPurchaseOrderDetails
-        ? "COALESCE((SELECT SUM(pod.quantity) FROM purchase_order_details pod WHERE pod.ingredient_id = i.id), 0)"
-        : "0";
-
-    const [rows] = await pool.query(`
-      SELECT i.id,
-             i.ingredient_name,
-             i.category,
-             i.base_unit,
-             ${totalStockSql} AS total_stock
-        FROM ingredients i
-       ORDER BY i.ingredient_name ASC
-    `);
+    const rows = await fetchInventoryRows(pool);
     res.json(rows);
   } catch (err) {
     console.error("GET /inventory/summary failed:", err.message);
@@ -218,8 +263,181 @@ router.get("/movements", async (req, res) => {
   }
 });
 
-function round2(value) {
-  return Number(Number(value || 0).toFixed(2));
-}
+router.post("/transfer", async (req, res) => {
+  const ingredientId = Number(req.body?.ingredientId || req.body?.ingredient_id);
+  const fromLocation = normalizeLocation(req.body?.fromLocation || req.body?.from_location);
+  const toLocation = normalizeLocation(req.body?.toLocation || req.body?.to_location);
+  const quantity = Number(req.body?.quantity);
+  const reason = String(req.body?.reason || "").trim() || null;
+
+  if (!Number.isFinite(ingredientId) || ingredientId <= 0) {
+    return res.status(400).json({ message: "ingredientId is required." });
+  }
+  if (!fromLocation || !toLocation || fromLocation === toLocation) {
+    return res.status(400).json({ message: "Select different from/to locations." });
+  }
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    return res.status(400).json({ message: "Transfer quantity must be greater than 0." });
+  }
+  if (!(await supportsInventoryLocations())) {
+    return res.status(503).json({ message: "Inventory locations are not set up yet. Run the latest database setup first." });
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [ingredientRows] = await conn.query(
+      "SELECT id, ingredient_name, base_unit, quantity FROM ingredients WHERE id=? FOR UPDATE",
+      [ingredientId]
+    );
+    const ingredient = ingredientRows[0];
+    if (!ingredient) {
+      await conn.rollback();
+      return res.status(404).json({ message: "Ingredient not found." });
+    }
+
+    const balances = await getIngredientLocationBalances(conn, ingredientId, ingredient.quantity);
+    const sourceQty = fromLocation === STOCKROOM ? balances.stockroom : balances.shelf;
+    const targetQty = toLocation === STOCKROOM ? balances.stockroom : balances.shelf;
+    if (sourceQty < quantity) {
+      await conn.rollback();
+      return res.status(409).json({ message: `Not enough stock in ${fromLocation}.` });
+    }
+
+    await setIngredientLocationBalance(conn, ingredientId, fromLocation, round2(sourceQty - quantity));
+    await setIngredientLocationBalance(conn, ingredientId, toLocation, round2(targetQty + quantity));
+
+    await writeInventoryMovement(
+      {
+        ingredient_id: ingredientId,
+        movement_type: "STOCK_TRANSFER",
+        quantity_change: 0,
+        resulting_quantity: Number(ingredient.quantity || 0),
+        unit: ingredient.base_unit,
+        source_module: "INVENTORY",
+        reference_type: "ingredient",
+        reference_id: ingredientId,
+        notes: `${fromLocation} -> ${toLocation} | Qty ${round2(quantity)}${reason ? ` | ${reason}` : ""}`,
+        created_by_user_id: req.user?.id || null,
+      },
+      conn
+    );
+    await writeAuditLog(
+      {
+        ...buildActor(req),
+        module_name: "INVENTORY",
+        action_name: "TRANSFER",
+        entity_type: "ingredient",
+        entity_id: ingredientId,
+        summary: `Transferred ${round2(quantity)} ${ingredient.base_unit} of ${ingredient.ingredient_name} from ${fromLocation} to ${toLocation}.`,
+      },
+      conn
+    );
+    await conn.commit();
+    res.status(201).json({ ok: true });
+  } catch (err) {
+    await conn.rollback();
+    console.error("POST /inventory/transfer failed:", err.message);
+    res.status(500).json({ message: err?.message || "Failed to transfer stock" });
+  } finally {
+    conn.release();
+  }
+});
+
+router.post("/adjustments", async (req, res) => {
+  const ingredientId = Number(req.body?.ingredientId || req.body?.ingredient_id);
+  const adjustmentType = String(req.body?.type || req.body?.adjustment_type || "").trim().toUpperCase();
+  const location = normalizeLocation(req.body?.location);
+  const quantityChange = Number(req.body?.quantityChange ?? req.body?.quantity_change);
+  const reason = String(req.body?.reason || "").trim() || null;
+
+  if (!Number.isFinite(ingredientId) || ingredientId <= 0) {
+    return res.status(400).json({ message: "ingredientId is required." });
+  }
+  if (!ADJUSTMENT_TYPES.has(adjustmentType)) {
+    return res.status(400).json({ message: `type must be one of: ${Array.from(ADJUSTMENT_TYPES).join(", ")}` });
+  }
+  if (!Number.isFinite(quantityChange) || quantityChange === 0) {
+    return res.status(400).json({ message: "quantityChange must not be 0." });
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [ingredientRows] = await conn.query(
+      "SELECT id, ingredient_name, base_unit, quantity FROM ingredients WHERE id=? FOR UPDATE",
+      [ingredientId]
+    );
+    const ingredient = ingredientRows[0];
+    if (!ingredient) {
+      await conn.rollback();
+      return res.status(404).json({ message: "Ingredient not found." });
+    }
+
+    const previousTotal = Number(ingredient.quantity || 0);
+    const nextTotal = round2(previousTotal + quantityChange);
+    if (nextTotal < 0) {
+      await conn.rollback();
+      return res.status(409).json({ message: "Adjustment would make total stock negative." });
+    }
+
+    await conn.query("UPDATE ingredients SET quantity=?, last_updated=NOW() WHERE id=?", [nextTotal, ingredientId]);
+
+    if (location && (await supportsInventoryLocations())) {
+      const balances = await getIngredientLocationBalances(conn, ingredientId, previousTotal);
+      const currentQty = location === STOCKROOM ? balances.stockroom : balances.shelf;
+      const nextLocationQty = round2(currentQty + quantityChange);
+      if (nextLocationQty < 0) {
+        await conn.rollback();
+        return res.status(409).json({
+          message: `${location} stock would become negative. Current balances: STOCKROOM ${round2(
+            balances.stockroom
+          )}, SHELF ${round2(balances.shelf)}. Choose the location where the stock currently exists, or transfer stock first.`,
+        });
+      }
+      await setIngredientLocationBalance(conn, ingredientId, location, nextLocationQty);
+    }
+
+    await writeInventoryMovement(
+      {
+        ingredient_id: ingredientId,
+        movement_type: adjustmentType,
+        quantity_change: quantityChange,
+        resulting_quantity: nextTotal,
+        unit: ingredient.base_unit,
+        source_module: "INVENTORY",
+        reference_type: "ingredient",
+        reference_id: ingredientId,
+        notes: `${location ? `${location} | ` : ""}${reason || "Inventory adjustment"}`,
+        created_by_user_id: req.user?.id || null,
+      },
+      conn
+    );
+    await writeAuditLog(
+      {
+        ...buildActor(req),
+        module_name: "INVENTORY",
+        action_name: "ADJUSTMENT",
+        entity_type: "ingredient",
+        entity_id: ingredientId,
+        summary: `Recorded ${adjustmentType.toLowerCase()} adjustment for ${ingredient.ingredient_name}.`,
+        metadata: {
+          type: adjustmentType,
+          location,
+          quantity_change: quantityChange,
+        },
+      },
+      conn
+    );
+    await conn.commit();
+    res.status(201).json({ ok: true });
+  } catch (err) {
+    await conn.rollback();
+    console.error("POST /inventory/adjustments failed:", err.message);
+    res.status(500).json({ message: err?.message || "Failed to save inventory adjustment" });
+  } finally {
+    conn.release();
+  }
+});
 
 module.exports = router;

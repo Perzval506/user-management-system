@@ -1,7 +1,7 @@
 const express = require("express");
 const pool = require("../db");
 const { requireAuth, requireRole } = require("../middleware/auth");
-const { getColumns } = require("../utils/dbIntrospection");
+const { getColumns, tableExists } = require("../utils/dbIntrospection");
 const { buildActor, writeAuditLog } = require("../utils/auditLog");
 const { computeMenuItemCosting } = require("../utils/costing");
 const router = express.Router();
@@ -195,6 +195,21 @@ async function buildMenuCostingDetails(connOrPool, menuItem) {
     ingredients: costing.items,
     costing,
   };
+}
+
+function buildPromotionPricing(promo, currentPrice) {
+  const price = Number(currentPrice || 0);
+  const promoValue = Number(promo?.promo_value ?? promo?.discount_value ?? 0);
+  if (!Number.isFinite(price) || price <= 0) return null;
+  const promoType = String(promo?.promo_type || promo?.discount_type || "").toUpperCase();
+  if (promoType === "PERCENT") {
+    return Math.max(round2(price - price * (promoValue / 100)), 0);
+  }
+  return Math.max(round2(price - promoValue), 0);
+}
+
+function round2(value) {
+  return Number(Number(value || 0).toFixed(2));
 }
 
 // GET list with latest price (by effective_date)
@@ -462,7 +477,7 @@ router.delete("/:id", requireAuth, requireRole("OWNER"), async (req, res) => {
 // Add new price history row
 router.post("/:id/price", requireAuth, requireRole("OWNER"), async (req, res) => {
   const { id } = req.params;
-  const { selling_price, effective_date } = req.body;
+  const { selling_price, effective_date, reason, notes } = req.body;
   if (typeof selling_price === 'undefined') return res.status(400).json({ error: 'selling_price is required' });
   const sellingPrice = Number(selling_price);
   if (!Number.isFinite(sellingPrice) || sellingPrice <= 0) {
@@ -473,9 +488,28 @@ router.post("/:id/price", requireAuth, requireRole("OWNER"), async (req, res) =>
   }
   try {
     const ed = effective_date ? new Date(effective_date) : new Date();
+    const priceHistoryCols = (await tableExists("menu_price_history")) ? await getColumns("menu_price_history") : {};
+    const fields = ["menu_item_id", "selling_price", "effective_date"];
+    const placeholders = ["?", "?", "?"];
+    const values = [id, sellingPrice, ed];
+    if (priceHistoryCols.change_reason) {
+      fields.push("change_reason");
+      placeholders.push("?");
+      values.push("MANUAL");
+    }
+    if (priceHistoryCols.notes) {
+      fields.push("notes");
+      placeholders.push("?");
+      values.push(String(reason || notes || "").trim() || null);
+    }
+    if (priceHistoryCols.created_by) {
+      fields.push("created_by");
+      placeholders.push("?");
+      values.push(req.user?.id || null);
+    }
     await pool.query(
-      'INSERT INTO menu_price_history (menu_item_id, selling_price, effective_date) VALUES (?,?,?)',
-      [id, sellingPrice, ed]
+      `INSERT INTO menu_price_history (${fields.join(", ")}) VALUES (${placeholders.join(", ")})`,
+      values
     );
     await writeAuditLog({
       ...buildActor(req),
@@ -489,6 +523,419 @@ router.post("/:id/price", requireAuth, requireRole("OWNER"), async (req, res) =>
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to add price' });
+  }
+});
+
+router.get("/:id/price-history", requireAuth, async (req, res) => {
+  const { id } = req.params;
+  try {
+    if (!(await tableExists("menu_price_history"))) return res.json([]);
+    const cols = await getColumns("menu_price_history");
+    const [rows] = await pool.query(
+      `SELECT mph.id,
+              mph.menu_item_id,
+              mph.selling_price,
+              mph.effective_date,
+              ${cols.notes ? "mph.notes" : "NULL AS notes"},
+              ${cols.change_reason ? "mph.change_reason" : "NULL AS change_reason"},
+              ${cols.synced_to_pos ? "mph.synced_to_pos" : "0 AS synced_to_pos"},
+              ${cols.synced_at ? "mph.synced_at" : "NULL AS synced_at"},
+              ${cols.synced_by ? "mph.synced_by" : "NULL AS synced_by"},
+              ${cols.created_by ? "mph.created_by" : "NULL AS created_by"},
+              mph.created_at,
+              u.full_name AS created_by_name,
+              su.full_name AS synced_by_name
+         FROM menu_price_history mph
+         LEFT JOIN users u ON u.id = ${cols.created_by ? "mph.created_by" : "NULL"}
+         LEFT JOIN users su ON su.id = ${cols.synced_by ? "mph.synced_by" : "NULL"}
+        WHERE mph.menu_item_id = ?
+        ORDER BY mph.effective_date DESC, mph.id DESC`,
+      [id]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("GET /menu/:id/price-history failed:", err.message);
+    res.status(500).json({ error: "Failed to fetch price history" });
+  }
+});
+
+router.post("/:id/price-history/:historyId/mark-synced", requireAuth, requireRole("OWNER"), async (req, res) => {
+  const { id, historyId } = req.params;
+  try {
+    if (!(await tableExists("menu_price_history"))) {
+      return res.status(503).json({ error: "Price history setup is incomplete." });
+    }
+    const cols = await getColumns("menu_price_history");
+    if (!cols.synced_to_pos) {
+      return res.status(503).json({ error: "Price sync tracking is not available in this database yet." });
+    }
+    const updates = ["synced_to_pos = 1"];
+    const values = [];
+    if (cols.synced_at) updates.push("synced_at = NOW()");
+    if (cols.synced_by) {
+      updates.push("synced_by = ?");
+      values.push(req.user?.id || null);
+    }
+    values.push(historyId, id);
+    await pool.query(
+      `UPDATE menu_price_history SET ${updates.join(", ")} WHERE id = ? AND menu_item_id = ?`,
+      values
+    );
+    await writeAuditLog({
+      ...buildActor(req),
+      module_name: "MENU",
+      action_name: "PRICE_SYNC",
+      entity_type: "menu_item",
+      entity_id: Number(id),
+      summary: `Marked menu price history #${historyId} as synced.`,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("POST /menu/:id/price-history/:historyId/mark-synced failed:", err.message);
+    res.status(500).json({ error: "Failed to mark price as synced" });
+  }
+});
+
+router.get("/:id/promotions", requireAuth, async (req, res) => {
+  const { id } = req.params;
+  try {
+    if (!(await tableExists("menu_promotions"))) return res.json([]);
+    const currentPriceMap = await getCurrentPriceMap(pool);
+    const currentPrice = currentPriceMap[id]?.selling_price || 0;
+    const cols = await getColumns("menu_promotions");
+    const promoTypeExpr = cols.promo_type
+      ? "mp.promo_type"
+      : cols.discount_type
+        ? "mp.discount_type"
+        : "NULL";
+    const promoValueExpr = cols.promo_value
+      ? "mp.promo_value"
+      : cols.discount_value
+        ? "mp.discount_value"
+        : "0";
+    const notesExpr = cols.notes ? "mp.notes" : "NULL";
+    const [rows] = await pool.query(
+      `SELECT mp.*,
+              ${promoTypeExpr} AS normalized_promo_type,
+              ${promoValueExpr} AS normalized_promo_value,
+              ${notesExpr} AS normalized_notes
+         FROM menu_promotions mp
+        WHERE mp.menu_item_id = ?
+        ORDER BY mp.start_date DESC, mp.id DESC`,
+      [id]
+    );
+    res.json(
+      rows.map((row) => ({
+        ...row,
+        promo_type: row.normalized_promo_type,
+        promo_value: Number(row.normalized_promo_value || 0),
+        notes: row.normalized_notes,
+        discounted_price: buildPromotionPricing(row, currentPrice),
+      }))
+    );
+  } catch (err) {
+    console.error("GET /menu/:id/promotions failed:", err.message);
+    res.status(500).json({ error: "Failed to fetch promotions" });
+  }
+});
+
+router.post("/:id/promotions", requireAuth, requireRole("OWNER"), async (req, res) => {
+  const { id } = req.params;
+  const promoName = String(req.body?.promo_name || req.body?.promoName || "").trim();
+  const promoType = String(req.body?.promo_type || req.body?.promoType || "FIXED").trim().toUpperCase();
+  const promoValue = Number(req.body?.promo_value ?? req.body?.promoValue);
+  const startDate = req.body?.start_date || req.body?.startDate;
+  const rawEndDate = req.body?.end_date || req.body?.endDate || null;
+  const endDate = rawEndDate || startDate;
+  const rawStatus = String(req.body?.status || "ACTIVE").trim().toUpperCase();
+  const statusMap = {
+    DRAFT: "SCHEDULED",
+    INACTIVE: "ENDED",
+  };
+  const status = statusMap[rawStatus] || rawStatus;
+  const notes = String(req.body?.notes || "").trim() || null;
+
+  if (!(await tableExists("menu_promotions"))) {
+    return res.status(503).json({ error: "Promotion setup is incomplete. Run the latest database setup first." });
+  }
+  if (!promoName) return res.status(400).json({ error: "promo_name is required" });
+  if (!["FIXED", "PERCENT"].includes(promoType)) return res.status(400).json({ error: "promo_type must be FIXED or PERCENT" });
+  if (!Number.isFinite(promoValue) || promoValue < 0) return res.status(400).json({ error: "promo_value must be 0 or greater" });
+  if (!isValidDate(startDate)) return res.status(400).json({ error: "start_date must be a valid date" });
+  if (!isValidDate(endDate)) return res.status(400).json({ error: "end_date must be a valid date" });
+  if (!["SCHEDULED", "ACTIVE", "ENDED"].includes(status)) {
+    return res.status(400).json({ error: "status must be SCHEDULED, ACTIVE, or ENDED" });
+  }
+
+  try {
+    const cols = await getColumns("menu_promotions");
+    const fields = ["menu_item_id", "promo_name", "start_date", "end_date", "status"];
+    const placeholders = ["?", "?", "?", "?", "?"];
+    const values = [id, promoName, startDate, endDate, status];
+    if (cols.promo_type) {
+      fields.push("promo_type");
+      placeholders.push("?");
+      values.push(promoType);
+    }
+    if (cols.discount_type) {
+      fields.push("discount_type");
+      placeholders.push("?");
+      values.push(promoType);
+    }
+    if (cols.promo_value) {
+      fields.push("promo_value");
+      placeholders.push("?");
+      values.push(promoValue);
+    }
+    if (cols.discount_value) {
+      fields.push("discount_value");
+      placeholders.push("?");
+      values.push(promoValue);
+    }
+    if (cols.notes) {
+      fields.push("notes");
+      placeholders.push("?");
+      values.push(notes);
+    }
+    if (cols.created_by) {
+      fields.push("created_by");
+      placeholders.push("?");
+      values.push(req.user?.id || null);
+    }
+
+    const [result] = await pool.query(
+      `INSERT INTO menu_promotions (${fields.join(", ")}) VALUES (${placeholders.join(", ")})`,
+      values
+    );
+    await writeAuditLog({
+      ...buildActor(req),
+      module_name: "MENU",
+      action_name: "PROMOTION_CREATE",
+      entity_type: "menu_item",
+      entity_id: Number(id),
+      summary: `Created promotion ${promoName}.`,
+    });
+    res.status(201).json({ id: result.insertId, ok: true });
+  } catch (err) {
+    console.error("POST /menu/:id/promotions failed:", err.message);
+    res.status(500).json({ error: "Failed to create promotion" });
+  }
+});
+
+router.get("/:id/recipe-versions", requireAuth, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [[menu]] = await pool.query("SELECT * FROM menu_items WHERE id=?", [id]);
+    if (!menu || !menu.recipe_version_id) return res.json([]);
+
+    const [[activeVersion]] = await pool.query("SELECT * FROM recipe_versions WHERE id=?", [menu.recipe_version_id]);
+    if (!activeVersion) return res.json([]);
+
+    const [versions] = await pool.query(
+      `SELECT rv.*,
+              (SELECT COUNT(*) FROM recipe_ingredients ri WHERE ri.recipe_version_id = rv.id) AS ingredient_count
+         FROM recipe_versions rv
+        WHERE rv.recipe_id = ?
+        ORDER BY rv.version_no DESC, rv.id DESC`,
+      [activeVersion.recipe_id]
+    );
+
+    const currentPriceMap = await getCurrentPriceMap(pool);
+    const currentPrice = currentPriceMap[id]?.selling_price ?? 0;
+    const payload = [];
+    let currentCost = null;
+
+    for (const version of versions) {
+      const costingDetails = await buildMenuCostingDetails(pool, {
+        ...menu,
+        recipe_version_id: version.id,
+        yield_amount: version.yield_amount,
+        yield_unit: version.yield_unit,
+        portion_size: version.portion_size,
+        portion_unit: version.portion_unit,
+        selling_price: currentPrice,
+      });
+      const costPerPortion = costingDetails?.costing?.cost_per_portion ?? null;
+      if (Number(version.id) === Number(menu.recipe_version_id)) {
+        currentCost = costPerPortion;
+      }
+      payload.push({
+        id: version.id,
+        version_no: version.version_no,
+        is_locked: Boolean(version.is_locked),
+        is_active: Boolean(version.is_active),
+        created_at: version.created_at,
+        ingredient_count: Number(version.ingredient_count || 0),
+        cost_per_portion: costPerPortion,
+      });
+    }
+
+    res.json(
+      payload.map((version) => ({
+        ...version,
+        diff_vs_current:
+          currentCost == null || version.cost_per_portion == null
+            ? null
+            : round2(Number(version.cost_per_portion || 0) - Number(currentCost || 0)),
+      }))
+    );
+  } catch (err) {
+    console.error("GET /menu/:id/recipe-versions failed:", err.message);
+    res.status(500).json({ error: "Failed to fetch recipe versions" });
+  }
+});
+
+router.post("/:id/recipe-versions", requireAuth, requireRole("OWNER"), async (req, res) => {
+  const { id } = req.params;
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [[menu]] = await conn.query("SELECT * FROM menu_items WHERE id=? FOR UPDATE", [id]);
+    if (!menu || !menu.recipe_version_id) {
+      await conn.rollback();
+      return res.status(404).json({ error: "Menu item does not have a recipe yet." });
+    }
+    const [[currentVersion]] = await conn.query("SELECT * FROM recipe_versions WHERE id=? FOR UPDATE", [menu.recipe_version_id]);
+    if (!currentVersion) {
+      await conn.rollback();
+      return res.status(404).json({ error: "Current recipe version not found." });
+    }
+
+    const [[nextVersionRow]] = await conn.query(
+      "SELECT COALESCE(MAX(version_no), 0) + 1 AS next_version_no FROM recipe_versions WHERE recipe_id=?",
+      [currentVersion.recipe_id]
+    );
+    const nextVersionNo = Number(nextVersionRow?.next_version_no || 1);
+    const [insertResult] = await conn.query(
+      `INSERT INTO recipe_versions
+        (recipe_id, version_no, yield_amount, yield_unit, portion_size, portion_unit, is_locked, is_active, created_by)
+       VALUES (?,?,?,?,?,?,?,?,?)`,
+      [
+        currentVersion.recipe_id,
+        nextVersionNo,
+        currentVersion.yield_amount,
+        currentVersion.yield_unit,
+        currentVersion.portion_size,
+        currentVersion.portion_unit,
+        0,
+        1,
+        req.user?.id || null,
+      ]
+    );
+
+    const recipeIngredientCols = await getColumns("recipe_ingredients");
+    const insertColumns = ["recipe_version_id", "ingredient_id", "qty_used", "qty_unit"];
+    if (recipeIngredientCols.price) insertColumns.push("price");
+    if (recipeIngredientCols.yield_percent) insertColumns.push("yield_percent");
+    const [currentLines] = await conn.query(
+      `SELECT ingredient_id, qty_used, qty_unit${recipeIngredientCols.price ? ", price" : ""}${recipeIngredientCols.yield_percent ? ", yield_percent" : ""}
+         FROM recipe_ingredients
+        WHERE recipe_version_id = ?`,
+      [currentVersion.id]
+    );
+    if (currentLines.length) {
+      const values = currentLines.map((line) => {
+        const row = [insertResult.insertId, line.ingredient_id, line.qty_used, line.qty_unit];
+        if (recipeIngredientCols.price) row.push(line.price ?? null);
+        if (recipeIngredientCols.yield_percent) row.push(line.yield_percent ?? null);
+        return row;
+      });
+      await conn.query(
+        `INSERT INTO recipe_ingredients (${insertColumns.join(", ")}) VALUES ?`,
+        [values]
+      );
+    }
+
+    await conn.query("UPDATE recipe_versions SET is_active = 0 WHERE recipe_id = ?", [currentVersion.recipe_id]);
+    await conn.query("UPDATE recipe_versions SET is_active = 1 WHERE id = ?", [insertResult.insertId]);
+    await conn.query("UPDATE menu_items SET recipe_version_id = ? WHERE id = ?", [insertResult.insertId, id]);
+
+    await writeAuditLog(
+      {
+        ...buildActor(req),
+        module_name: "MENU",
+        action_name: "RECIPE_VERSION_CREATE",
+        entity_type: "menu_item",
+        entity_id: Number(id),
+        summary: `Created recipe version v${nextVersionNo}.`,
+      },
+      conn
+    );
+    await conn.commit();
+    res.status(201).json({ id: insertResult.insertId, version_no: nextVersionNo, ok: true });
+  } catch (err) {
+    await conn.rollback();
+    console.error("POST /menu/:id/recipe-versions failed:", err.message);
+    res.status(500).json({ error: "Failed to create recipe version" });
+  } finally {
+    conn.release();
+  }
+});
+
+router.post("/:id/recipe-versions/:versionId/lock", requireAuth, requireRole("OWNER"), async (req, res) => {
+  const { id, versionId } = req.params;
+  try {
+    await pool.query(
+      `UPDATE recipe_versions rv
+       JOIN menu_items m ON m.recipe_version_id = rv.id OR m.id = ?
+          SET rv.is_locked = 1
+        WHERE rv.id = ?`,
+      [id, versionId]
+    );
+    await writeAuditLog({
+      ...buildActor(req),
+      module_name: "MENU",
+      action_name: "RECIPE_VERSION_LOCK",
+      entity_type: "menu_item",
+      entity_id: Number(id),
+      summary: `Locked recipe version #${versionId}.`,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("POST /menu/:id/recipe-versions/:versionId/lock failed:", err.message);
+    res.status(500).json({ error: "Failed to lock recipe version" });
+  }
+});
+
+router.post("/:id/recipe-versions/:versionId/activate", requireAuth, requireRole("OWNER"), async (req, res) => {
+  const { id, versionId } = req.params;
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [[targetVersion]] = await conn.query(
+      `SELECT rv.*, m.id AS menu_id
+         FROM recipe_versions rv
+         JOIN recipes r ON r.id = rv.recipe_id
+         JOIN menu_items m ON m.id = ?
+        WHERE rv.id = ?`,
+      [id, versionId]
+    );
+    if (!targetVersion) {
+      await conn.rollback();
+      return res.status(404).json({ error: "Recipe version not found." });
+    }
+    await conn.query("UPDATE recipe_versions SET is_active = 0 WHERE recipe_id = ?", [targetVersion.recipe_id]);
+    await conn.query("UPDATE recipe_versions SET is_active = 1 WHERE id = ?", [versionId]);
+    await conn.query("UPDATE menu_items SET recipe_version_id = ? WHERE id = ?", [versionId, id]);
+    await writeAuditLog(
+      {
+        ...buildActor(req),
+        module_name: "MENU",
+        action_name: "RECIPE_VERSION_ACTIVATE",
+        entity_type: "menu_item",
+        entity_id: Number(id),
+        summary: `Activated recipe version #${versionId}.`,
+      },
+      conn
+    );
+    await conn.commit();
+    res.json({ ok: true });
+  } catch (err) {
+    await conn.rollback();
+    console.error("POST /menu/:id/recipe-versions/:versionId/activate failed:", err.message);
+    res.status(500).json({ error: "Failed to activate recipe version" });
+  } finally {
+    conn.release();
   }
 });
 
@@ -558,6 +1005,12 @@ router.put("/:id/recipe", requireAuth, async (req, res) => {
       });
       recipeVersionId = created.recipeVersionId;
       await conn.query('UPDATE menu_items SET recipe_version_id=? WHERE id=?', [recipeVersionId, id]);
+    }
+
+    const [[currentVersion]] = await conn.query("SELECT * FROM recipe_versions WHERE id=? FOR UPDATE", [recipeVersionId]);
+    if (currentVersion?.is_locked) {
+      await conn.rollback();
+      return res.status(409).json({ error: "This recipe version is locked. Create a new version before editing it." });
     }
 
     const recipeVersionCols = await getColumns("recipe_versions");

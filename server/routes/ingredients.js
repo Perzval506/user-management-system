@@ -3,7 +3,7 @@ const pool = require("../db");
 const router = express.Router();
 const { requireAuth, requireAnyRole } = require("../middleware/auth");
 const ALLOWED_UNITS = require("../utils/units");
-const { tableExists, columnExists } = require("../utils/dbIntrospection");
+const { tableExists, getColumns } = require("../utils/dbIntrospection");
 const { buildActor, writeAuditLog } = require("../utils/auditLog");
 const { writeInventoryMovement } = require("../utils/inventoryMovements");
 
@@ -36,8 +36,7 @@ function baseQtyColumn(cols) {
 
 const currentApCostColumn = async () => {
   const cols = await getIngredientColumns();
-  if (cols.current_ap_cost) return "current_ap_cost";
-  return null;
+  return cols.current_ap_cost ? "current_ap_cost" : null;
 };
 
 async function categoryTableAvailable() {
@@ -55,6 +54,44 @@ async function syncCategoryRegistry(conn, categoryName) {
      ON DUPLICATE KEY UPDATE status = 'ACTIVE', category_name = VALUES(category_name)`,
     [normalized]
   );
+}
+
+function round2(value) {
+  return Number(Number(value || 0).toFixed(2));
+}
+
+function normalizeDateInput(value) {
+  if (!value) return new Date().toISOString().slice(0, 10);
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString().slice(0, 10);
+}
+
+async function updateIngredientCurrentApCost(conn, ingredientId, apCostPerUnit) {
+  const column = await currentApCostColumn();
+  if (!column) return;
+  await conn.query(`UPDATE ingredients SET ${column}=?, last_updated=NOW() WHERE id=?`, [
+    Number(apCostPerUnit || 0),
+    ingredientId,
+  ]);
+}
+
+async function getApPriceTableColumns() {
+  if (!(await tableExists("ingredient_ap_prices"))) return {};
+  return getColumns("ingredient_ap_prices");
+}
+
+async function getSupplierQuoteItemColumns() {
+  if (!(await tableExists("supplier_quote_items"))) return {};
+  return getColumns("supplier_quote_items");
+}
+
+async function getIngredientById(ingredientId) {
+  const [rows] = await pool.query(
+    "SELECT id, ingredient_name, base_unit, quantity, status, updated_at, last_updated FROM ingredients WHERE id=?",
+    [ingredientId]
+  );
+  return rows[0] || null;
 }
 
 router.get("/categories", canReadIngredients, async (_req, res) => {
@@ -140,7 +177,7 @@ router.get("/", canReadIngredients, async (req, res) => {
     if (cols.current_ap_cost) select.splice(6, 0, "current_ap_cost");
     if (cols.last_updated) select.push("last_updated");
 
-    const search = (req.query.q || "").trim();
+    const search = String(req.query.q || "").trim();
     const where = search ? "WHERE LOWER(ingredient_name) LIKE ?" : "";
     const params = search ? [`%${search.toLowerCase()}%`] : [];
 
@@ -233,10 +270,7 @@ router.get("/:id/history", canReadIngredients, async (req, res) => {
   }
 
   try {
-    const [[ingredient]] = await pool.query(
-      "SELECT id, ingredient_name, base_unit, quantity, status, updated_at, last_updated FROM ingredients WHERE id=?",
-      [ingredientId]
-    );
+    const ingredient = await getIngredientById(ingredientId);
     if (!ingredient) return res.status(404).json({ message: "Ingredient not found." });
 
     const [purchaseRows] = (await tableExists("purchases"))
@@ -267,6 +301,48 @@ router.get("/:id/history", canReadIngredients, async (req, res) => {
         )
       : [[]];
 
+    const apPriceCols = await getApPriceTableColumns();
+    const apCostExpr = apPriceCols.ap_cost_per_unit
+      ? apPriceCols.ap_unit_cost
+        ? "COALESCE(iap.ap_cost_per_unit, iap.ap_unit_cost) AS ap_cost_per_unit"
+        : "iap.ap_cost_per_unit"
+      : apPriceCols.ap_unit_cost
+        ? "iap.ap_unit_cost AS ap_cost_per_unit"
+        : "0 AS ap_cost_per_unit";
+    const [apPrices] = (await tableExists("ingredient_ap_prices"))
+      ? await pool.query(
+          `SELECT iap.id, iap.supplier_name, iap.unit, ${apCostExpr}, iap.effective_date, iap.notes, iap.created_at
+             FROM ingredient_ap_prices iap
+            WHERE iap.ingredient_id = ?
+            ORDER BY iap.effective_date DESC, iap.id DESC`,
+          [ingredientId]
+        )
+      : [[]];
+
+    const [quoteRows] = (await tableExists("supplier_quotes")) && (await tableExists("supplier_quote_items"))
+      ? await pool.query(
+          `SELECT sq.id,
+                  sq.supplier_name,
+                  sq.quote_date,
+                  sq.valid_until,
+                  sq.status,
+                  sq.notes,
+                  sq.created_at,
+                  sqi.id AS quote_item_id,
+                  sqi.brand,
+                  sqi.unit,
+                  sqi.quantity,
+                  sqi.quoted_price,
+                  sqi.notes AS item_notes
+             FROM supplier_quotes sq
+             JOIN supplier_quote_items sqi ON sqi.supplier_quote_id = sq.id
+            WHERE sqi.ingredient_id = ?
+               OR LOWER(TRIM(COALESCE(sqi.ingredient_name, ''))) = LOWER(TRIM(?))
+            ORDER BY sq.quote_date DESC, sq.id DESC, sqi.id DESC`,
+          [ingredientId, ingredient.ingredient_name]
+        )
+      : [[]];
+
     const history = [...purchaseRows, ...poRows].sort(
       (a, b) => new Date(b.activity_date).getTime() - new Date(a.activity_date).getTime()
     );
@@ -276,7 +352,10 @@ router.get("/:id/history", canReadIngredients, async (req, res) => {
         ...ingredient,
         ingredient_name: String(ingredient.ingredient_name || "").toUpperCase(),
       },
+      current_ap_cost: apPrices.length ? Number(apPrices[0].ap_cost_per_unit || 0) : null,
       history,
+      ap_prices: apPrices,
+      supplier_quotes: quoteRows,
     });
   } catch (err) {
     console.error("GET /ingredients/:id/history failed:", err.message);
@@ -284,9 +363,500 @@ router.get("/:id/history", canReadIngredients, async (req, res) => {
   }
 });
 
+router.post("/:id/ap-prices", canManageIngredients, async (req, res) => {
+  const ingredientId = Number(req.params.id);
+  const supplierName = String(req.body?.supplierName || req.body?.supplier_name || "").trim() || null;
+  const unit = String(req.body?.unit || "").trim().toLowerCase();
+  const notes = String(req.body?.notes || "").trim() || null;
+  const effectiveDate = normalizeDateInput(req.body?.effectiveDate || req.body?.effective_date);
+  const apCostPerUnit = Number(req.body?.apCostPerUnit ?? req.body?.ap_cost_per_unit);
+
+  if (!Number.isFinite(ingredientId) || ingredientId <= 0) {
+    return res.status(400).json({ message: "Invalid ingredient id." });
+  }
+  if (!(await tableExists("ingredient_ap_prices"))) {
+    return res.status(503).json({ message: "AP pricing table is missing required columns. Run the latest database setup first." });
+  }
+  if (!unit || !ALLOWED_UNITS.includes(unit)) {
+    return res.status(400).json({ message: `Invalid unit. Allowed: ${ALLOWED_UNITS.join(", ")}` });
+  }
+  if (!Number.isFinite(apCostPerUnit) || apCostPerUnit < 0) {
+    return res.status(400).json({ message: "AP cost per unit must be 0 or greater." });
+  }
+  if (!effectiveDate) {
+    return res.status(400).json({ message: "effectiveDate must be a valid date." });
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const ingredient = await getIngredientById(ingredientId);
+    if (!ingredient) {
+      await conn.rollback();
+      return res.status(404).json({ message: "Ingredient not found." });
+    }
+
+    const apPriceCols = await getApPriceTableColumns();
+    const fields = ["ingredient_id", "effective_date"];
+    const placeholders = ["?", "?"];
+    const values = [ingredientId, effectiveDate];
+    if (apPriceCols.supplier_name) {
+      fields.push("supplier_name");
+      placeholders.push("?");
+      values.push(supplierName);
+    }
+    if (apPriceCols.unit) {
+      fields.push("unit");
+      placeholders.push("?");
+      values.push(unit);
+    }
+    if (apPriceCols.ap_cost_per_unit) {
+      fields.push("ap_cost_per_unit");
+      placeholders.push("?");
+      values.push(apCostPerUnit);
+    }
+    if (apPriceCols.ap_unit_cost) {
+      fields.push("ap_unit_cost");
+      placeholders.push("?");
+      values.push(round2(apCostPerUnit));
+    }
+    if (apPriceCols.notes) {
+      fields.push("notes");
+      placeholders.push("?");
+      values.push(notes);
+    }
+    if (apPriceCols.source) {
+      fields.push("source");
+      placeholders.push("?");
+      values.push("MANUAL");
+    }
+    if (apPriceCols.reference_no) {
+      fields.push("reference_no");
+      placeholders.push("?");
+      values.push(null);
+    }
+    if (apPriceCols.created_by) {
+      fields.push("created_by");
+      placeholders.push("?");
+      values.push(req.user?.id || null);
+    }
+
+    const [result] = await conn.query(
+      `INSERT INTO ingredient_ap_prices (${fields.join(", ")}) VALUES (${placeholders.join(", ")})`,
+      values
+    );
+
+    await updateIngredientCurrentApCost(conn, ingredientId, apCostPerUnit);
+    await writeAuditLog(
+      {
+        ...buildActor(req),
+        module_name: "INGREDIENTS",
+        action_name: "AP_PRICE_CREATE",
+        entity_type: "ingredient",
+        entity_id: ingredientId,
+        summary: `Saved AP cost for ${ingredient.ingredient_name}.`,
+        metadata: {
+          supplier_name: supplierName,
+          unit,
+          ap_cost_per_unit: apCostPerUnit,
+          effective_date: effectiveDate,
+        },
+      },
+      conn
+    );
+    await conn.commit();
+    res.status(201).json({ id: result.insertId, ok: true });
+  } catch (err) {
+    await conn.rollback();
+    console.error("POST /ingredients/:id/ap-prices failed:", err.message);
+    res.status(500).json({ message: err?.message || "Failed to save AP price" });
+  } finally {
+    conn.release();
+  }
+});
+
+router.post("/:id/ap-prices/:priceId/rollback", canManageIngredients, async (req, res) => {
+  const ingredientId = Number(req.params.id);
+  const priceId = Number(req.params.priceId);
+  if (!Number.isFinite(ingredientId) || ingredientId <= 0 || !Number.isFinite(priceId) || priceId <= 0) {
+    return res.status(400).json({ message: "Invalid ingredient or AP price id." });
+  }
+  if (!(await tableExists("ingredient_ap_prices"))) {
+    return res.status(503).json({ message: "AP pricing table is missing required columns. Run the latest database setup first." });
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const ingredient = await getIngredientById(ingredientId);
+    if (!ingredient) {
+      await conn.rollback();
+      return res.status(404).json({ message: "Ingredient not found." });
+    }
+    const [rows] = await conn.query(
+      `SELECT * FROM ingredient_ap_prices WHERE id=? AND ingredient_id=? LIMIT 1`,
+      [priceId, ingredientId]
+    );
+    const apRow = rows[0];
+    if (!apRow) {
+      await conn.rollback();
+      return res.status(404).json({ message: "AP price record not found." });
+    }
+
+    const apPriceCols = await getApPriceTableColumns();
+    const fields = ["ingredient_id", "effective_date"];
+    const placeholders = ["?", "?"];
+    const values = [ingredientId, new Date().toISOString().slice(0, 10)];
+    if (apPriceCols.supplier_name) {
+      fields.push("supplier_name");
+      placeholders.push("?");
+      values.push(apRow.supplier_name || null);
+    }
+    if (apPriceCols.unit) {
+      fields.push("unit");
+      placeholders.push("?");
+      values.push(apRow.unit || ingredient.base_unit);
+    }
+    if (apPriceCols.ap_cost_per_unit) {
+      fields.push("ap_cost_per_unit");
+      placeholders.push("?");
+      values.push(Number(apRow.ap_cost_per_unit ?? apRow.ap_unit_cost ?? 0));
+    }
+    if (apPriceCols.ap_unit_cost) {
+      fields.push("ap_unit_cost");
+      placeholders.push("?");
+      values.push(round2(Number(apRow.ap_unit_cost ?? apRow.ap_cost_per_unit ?? 0)));
+    }
+    if (apPriceCols.notes) {
+      fields.push("notes");
+      placeholders.push("?");
+      values.push(`Rollback to AP price #${priceId}${apRow.notes ? ` | ${apRow.notes}` : ""}`);
+    }
+    if (apPriceCols.source) {
+      fields.push("source");
+      placeholders.push("?");
+      values.push("ROLLBACK");
+    }
+    if (apPriceCols.reference_no) {
+      fields.push("reference_no");
+      placeholders.push("?");
+      values.push(`AP-${priceId}`);
+    }
+    if (apPriceCols.created_by) {
+      fields.push("created_by");
+      placeholders.push("?");
+      values.push(req.user?.id || null);
+    }
+
+    const [result] = await conn.query(
+      `INSERT INTO ingredient_ap_prices (${fields.join(", ")}) VALUES (${placeholders.join(", ")})`,
+      values
+    );
+
+    await updateIngredientCurrentApCost(conn, ingredientId, Number(apRow.ap_cost_per_unit ?? apRow.ap_unit_cost ?? 0));
+    await writeAuditLog(
+      {
+        ...buildActor(req),
+        module_name: "INGREDIENTS",
+        action_name: "AP_PRICE_ROLLBACK",
+        entity_type: "ingredient",
+        entity_id: ingredientId,
+        summary: `Rolled back AP cost for ${ingredient.ingredient_name}.`,
+        metadata: {
+          source_ap_price_id: priceId,
+          restored_price_id: result.insertId,
+          ap_cost_per_unit: Number(apRow.ap_cost_per_unit ?? apRow.ap_unit_cost ?? 0),
+        },
+      },
+      conn
+    );
+    await conn.commit();
+    res.status(201).json({ id: result.insertId, ok: true });
+  } catch (err) {
+    await conn.rollback();
+    console.error("POST /ingredients/:id/ap-prices/:priceId/rollback failed:", err.message);
+    res.status(500).json({ message: err?.message || "Failed to rollback AP price" });
+  } finally {
+    conn.release();
+  }
+});
+
+router.post("/:id/supplier-quotes", canManageIngredients, async (req, res) => {
+  const ingredientId = Number(req.params.id);
+  const supplierName = String(req.body?.supplierName || req.body?.supplier_name || "").trim();
+  const brand = String(req.body?.brand || "").trim() || null;
+  const unit = String(req.body?.unit || "").trim().toLowerCase();
+  const quoteDate = normalizeDateInput(req.body?.quoteDate || req.body?.quote_date);
+  const validUntil = req.body?.validUntil || req.body?.valid_until ? normalizeDateInput(req.body?.validUntil || req.body?.valid_until) : null;
+  const quantity = req.body?.quantity === "" || req.body?.quantity == null ? null : Number(req.body?.quantity);
+  const quotedPrice = Number(req.body?.quotedPrice ?? req.body?.quoted_price);
+  const notes = String(req.body?.notes || "").trim() || null;
+
+  if (!Number.isFinite(ingredientId) || ingredientId <= 0) {
+    return res.status(400).json({ message: "Invalid ingredient id." });
+  }
+  if (!(await tableExists("supplier_quotes")) || !(await tableExists("supplier_quote_items"))) {
+    return res.status(503).json({ message: "Supplier quote tables are missing required columns. Run the latest database setup first." });
+  }
+  if (!supplierName) {
+    return res.status(400).json({ message: "Supplier name is required." });
+  }
+  if (!quoteDate) {
+    return res.status(400).json({ message: "quoteDate must be a valid date." });
+  }
+  if (!unit || !ALLOWED_UNITS.includes(unit)) {
+    return res.status(400).json({ message: `Invalid unit. Allowed: ${ALLOWED_UNITS.join(", ")}` });
+  }
+  if (quantity !== null && (!Number.isFinite(quantity) || quantity <= 0)) {
+    return res.status(400).json({ message: "Quoted quantity must be greater than 0 when provided." });
+  }
+  if (!Number.isFinite(quotedPrice) || quotedPrice < 0) {
+    return res.status(400).json({ message: "Quoted price must be 0 or greater." });
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const ingredient = await getIngredientById(ingredientId);
+    if (!ingredient) {
+      await conn.rollback();
+      return res.status(404).json({ message: "Ingredient not found." });
+    }
+
+    const [quoteResult] = await conn.query(
+      `INSERT INTO supplier_quotes
+        (supplier_name, quote_date, valid_until, status, notes)
+       VALUES (?,?,?,?,?)`,
+      [supplierName, quoteDate, validUntil, "RECEIVED", notes]
+    );
+
+    const quoteItemCols = await getSupplierQuoteItemColumns();
+    const itemFields = [];
+    const itemPlaceholders = [];
+    const itemValues = [];
+    if (quoteItemCols.quote_id) {
+      itemFields.push("quote_id");
+      itemPlaceholders.push("?");
+      itemValues.push(quoteResult.insertId);
+    }
+    if (quoteItemCols.supplier_quote_id) {
+      itemFields.push("supplier_quote_id");
+      itemPlaceholders.push("?");
+      itemValues.push(quoteResult.insertId);
+    }
+    if (quoteItemCols.ingredient_id) {
+      itemFields.push("ingredient_id");
+      itemPlaceholders.push("?");
+      itemValues.push(ingredientId);
+    }
+    if (quoteItemCols.ingredient_name) {
+      itemFields.push("ingredient_name");
+      itemPlaceholders.push("?");
+      itemValues.push(ingredient.ingredient_name);
+    }
+    if (quoteItemCols.brand) {
+      itemFields.push("brand");
+      itemPlaceholders.push("?");
+      itemValues.push(brand);
+    }
+    if (quoteItemCols.unit) {
+      itemFields.push("unit");
+      itemPlaceholders.push("?");
+      itemValues.push(unit);
+    }
+    if (quoteItemCols.quantity) {
+      itemFields.push("quantity");
+      itemPlaceholders.push("?");
+      itemValues.push(quantity);
+    }
+    if (quoteItemCols.quoted_price) {
+      itemFields.push("quoted_price");
+      itemPlaceholders.push("?");
+      itemValues.push(quotedPrice);
+    }
+    if (quoteItemCols.quoted_unit_cost) {
+      itemFields.push("quoted_unit_cost");
+      itemPlaceholders.push("?");
+      itemValues.push(round2(quotedPrice));
+    }
+    if (quoteItemCols.effective_date) {
+      itemFields.push("effective_date");
+      itemPlaceholders.push("?");
+      itemValues.push(validUntil || quoteDate);
+    }
+    if (quoteItemCols.notes) {
+      itemFields.push("notes");
+      itemPlaceholders.push("?");
+      itemValues.push(notes);
+    }
+
+    const [itemResult] = await conn.query(
+      `INSERT INTO supplier_quote_items (${itemFields.join(", ")}) VALUES (${itemPlaceholders.join(", ")})`,
+      itemValues
+    );
+
+    await writeAuditLog(
+      {
+        ...buildActor(req),
+        module_name: "INGREDIENTS",
+        action_name: "SUPPLIER_QUOTE_CREATE",
+        entity_type: "ingredient",
+        entity_id: ingredientId,
+        summary: `Saved supplier quote for ${ingredient.ingredient_name}.`,
+        metadata: {
+          supplier_name: supplierName,
+          quoted_price: quotedPrice,
+          quote_date: quoteDate,
+        },
+      },
+      conn
+    );
+    await conn.commit();
+    res.status(201).json({ id: quoteResult.insertId, quote_item_id: itemResult.insertId, ok: true });
+  } catch (err) {
+    await conn.rollback();
+    console.error("POST /ingredients/:id/supplier-quotes failed:", err.message);
+    res.status(500).json({ message: err?.message || "Failed to save supplier quote" });
+  } finally {
+    conn.release();
+  }
+});
+
+router.post("/:id/supplier-quotes/:quoteId/use", canManageIngredients, async (req, res) => {
+  const ingredientId = Number(req.params.id);
+  const quoteId = Number(req.params.quoteId);
+  if (!Number.isFinite(ingredientId) || ingredientId <= 0 || !Number.isFinite(quoteId) || quoteId <= 0) {
+    return res.status(400).json({ message: "Invalid ingredient or supplier quote id." });
+  }
+  if (!(await tableExists("supplier_quotes")) || !(await tableExists("supplier_quote_items")) || !(await tableExists("ingredient_ap_prices"))) {
+    return res.status(503).json({ message: "Quote to AP conversion setup is incomplete. Run the latest database setup first." });
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const ingredient = await getIngredientById(ingredientId);
+    if (!ingredient) {
+      await conn.rollback();
+      return res.status(404).json({ message: "Ingredient not found." });
+    }
+
+    const quoteItemCols = await getSupplierQuoteItemColumns();
+    const quoteJoinColumn = quoteItemCols.supplier_quote_id
+      ? "sqi.supplier_quote_id"
+      : quoteItemCols.quote_id
+        ? "sqi.quote_id"
+        : null;
+    const quotedPriceExpr = quoteItemCols.quoted_price && quoteItemCols.quoted_unit_cost
+      ? "COALESCE(sqi.quoted_price, sqi.quoted_unit_cost)"
+      : quoteItemCols.quoted_price
+        ? "sqi.quoted_price"
+        : quoteItemCols.quoted_unit_cost
+          ? "sqi.quoted_unit_cost"
+          : "0";
+    if (!quoteJoinColumn) {
+      await conn.rollback();
+      return res.status(503).json({ message: "Supplier quote item link columns are missing. Run the latest database setup first." });
+    }
+
+    const [rows] = await conn.query(
+      `SELECT sq.id, sq.supplier_name, sq.quote_date, sqi.id AS quote_item_id, sqi.unit,
+              ${quotedPriceExpr} AS quoted_price
+         FROM supplier_quotes sq
+         JOIN supplier_quote_items sqi ON ${quoteJoinColumn} = sq.id
+        WHERE sq.id = ?
+          AND (sqi.ingredient_id = ? OR LOWER(TRIM(COALESCE(sqi.ingredient_name, ''))) = LOWER(TRIM(?)))
+        ORDER BY sqi.id DESC
+        LIMIT 1`,
+      [quoteId, ingredientId, ingredient.ingredient_name]
+    );
+    const quote = rows[0];
+    if (!quote) {
+      await conn.rollback();
+      return res.status(404).json({ message: "Supplier quote not found for this ingredient." });
+    }
+
+    const apPriceCols = await getApPriceTableColumns();
+    const fields = ["ingredient_id", "effective_date"];
+    const placeholders = ["?", "?"];
+    const values = [ingredientId, quote.quote_date];
+    if (apPriceCols.supplier_name) {
+      fields.push("supplier_name");
+      placeholders.push("?");
+      values.push(quote.supplier_name || null);
+    }
+    if (apPriceCols.unit) {
+      fields.push("unit");
+      placeholders.push("?");
+      values.push(quote.unit || ingredient.base_unit);
+    }
+    if (apPriceCols.ap_cost_per_unit) {
+      fields.push("ap_cost_per_unit");
+      placeholders.push("?");
+      values.push(Number(quote.quoted_price || 0));
+    }
+    if (apPriceCols.ap_unit_cost) {
+      fields.push("ap_unit_cost");
+      placeholders.push("?");
+      values.push(round2(Number(quote.quoted_price || 0)));
+    }
+    if (apPriceCols.notes) {
+      fields.push("notes");
+      placeholders.push("?");
+      values.push(`Applied from supplier quote #${quoteId}`);
+    }
+    if (apPriceCols.source) {
+      fields.push("source");
+      placeholders.push("?");
+      values.push("SUPPLIER_QUOTE");
+    }
+    if (apPriceCols.reference_no) {
+      fields.push("reference_no");
+      placeholders.push("?");
+      values.push(`QUOTE-${quoteId}`);
+    }
+    if (apPriceCols.created_by) {
+      fields.push("created_by");
+      placeholders.push("?");
+      values.push(req.user?.id || null);
+    }
+
+    const [result] = await conn.query(
+      `INSERT INTO ingredient_ap_prices (${fields.join(", ")}) VALUES (${placeholders.join(", ")})`,
+      values
+    );
+
+    await updateIngredientCurrentApCost(conn, ingredientId, quote.quoted_price);
+    await writeAuditLog(
+      {
+        ...buildActor(req),
+        module_name: "INGREDIENTS",
+        action_name: "SUPPLIER_QUOTE_APPLY",
+        entity_type: "ingredient",
+        entity_id: ingredientId,
+        summary: `Applied supplier quote to AP pricing for ${ingredient.ingredient_name}.`,
+        metadata: {
+          supplier_quote_id: quoteId,
+          ap_price_id: result.insertId,
+          quoted_price: Number(quote.quoted_price || 0),
+        },
+      },
+      conn
+    );
+    await conn.commit();
+    res.status(201).json({ id: result.insertId, ok: true });
+  } catch (err) {
+    await conn.rollback();
+    console.error("POST /ingredients/:id/supplier-quotes/:quoteId/use failed:", err.message);
+    res.status(500).json({ message: err?.message || "Failed to use supplier quote" });
+  } finally {
+    conn.release();
+  }
+});
+
 router.post("/", canManageIngredients, async (req, res) => {
   const { ingredient_name, category, base_unit, base_unit_qty, status, quantity } = req.body;
-  const bu = (base_unit || "").toString().trim().toLowerCase();
+  const bu = String(base_unit || "").trim().toLowerCase();
   const packSize = Number(base_unit_qty);
   const qtyToAdd = Number(quantity ?? base_unit_qty ?? 0);
 
@@ -399,7 +969,7 @@ router.post("/", canManageIngredients, async (req, res) => {
 router.put("/:id", canManageIngredients, async (req, res) => {
   const { id } = req.params;
   const { ingredient_name, category, base_unit, base_unit_qty, status, quantity } = req.body;
-  const bu = (base_unit || "").toString().trim().toLowerCase();
+  const bu = String(base_unit || "").trim().toLowerCase();
   const packSize = Number(base_unit_qty);
   const hasQty = typeof quantity !== "undefined";
   const qtyVal = Number(quantity);
@@ -499,7 +1069,3 @@ router.delete("/:id", canManageIngredients, async (req, res) => {
 });
 
 module.exports = router;
-
-function round2(value) {
-  return Number(Number(value || 0).toFixed(2));
-}

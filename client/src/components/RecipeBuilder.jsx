@@ -4,7 +4,7 @@ import useUnits from "../hooks/useUnits";
 import ConfirmModal from "./ConfirmModal";
 import MultiSelectDropdown from "./MultiSelectDropdown";
 import { useToast } from "./Toast";
-import { formatMoney, formatNumber } from "../utils/formatters";
+import { formatDateLong, formatMoney, formatNumber } from "../utils/formatters";
 import { computeMenuItemCosting } from "../utils/costing";
 
 const makeLocalLineId = () =>
@@ -159,6 +159,7 @@ export default function RecipeBuilder({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [recipeVersion, setRecipeVersion] = useState(null);
+  const [recipeVersions, setRecipeVersions] = useState([]);
   const [lines, setLines] = useState([]);
   const [ingredientsOpt, setIngredientsOpt] = useState([]);
   const [selectedToAdd, setSelectedToAdd] = useState([]);
@@ -167,6 +168,7 @@ export default function RecipeBuilder({
   const [dirty, setDirty] = useState(false);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [costingOrderType, setCostingOrderType] = useState("DINE_IN");
+  const [versionBusy, setVersionBusy] = useState(false);
   const draftKey = `recipe_draft:${menuId}`;
 
   const ingredientOptions = useMemo(
@@ -246,10 +248,12 @@ export default function RecipeBuilder({
         api.get("/ingredients"),
         api.get(`/menu/${menuId}/recipe`),
       ]);
+      const versionResponse = await api.get(`/menu/${menuId}/recipe-versions`);
 
       setIngredientsOpt(ingredientsResponse.data || []);
       const payload = recipeResponse.data || {};
       setRecipeVersion(payload.recipe_version || null);
+      setRecipeVersions(versionResponse.data || []);
       const serverLines = (payload.ingredients || []).map(normalizeLine);
 
       let restoredDraft = false;
@@ -284,6 +288,59 @@ export default function RecipeBuilder({
   useEffect(() => {
     load();
   }, [load]);
+
+  async function createNewVersion() {
+    setVersionBusy(true);
+    try {
+      await api.post(`/menu/${menuId}/recipe-versions`);
+      toast.push({
+        type: "success",
+        title: "Version created",
+        message: "A new editable recipe version is now active.",
+      });
+      await load();
+    } catch (error) {
+      setError(error?.response?.data?.error || error.message || "Failed to create a new recipe version");
+    } finally {
+      setVersionBusy(false);
+    }
+  }
+
+  async function lockCurrentVersion() {
+    if (!recipeVersion?.id) return;
+    setVersionBusy(true);
+    try {
+      await api.post(`/menu/${menuId}/recipe-versions/${recipeVersion.id}/lock`);
+      toast.push({
+        type: "success",
+        title: "Version locked",
+        message: `Recipe version v${recipeVersion.version_no || ""} is now locked.`,
+      });
+      await load();
+    } catch (error) {
+      setError(error?.response?.data?.error || error.message || "Failed to lock recipe version");
+    } finally {
+      setVersionBusy(false);
+    }
+  }
+
+  async function activateVersion(versionId) {
+    if (!versionId) return;
+    setVersionBusy(true);
+    try {
+      await api.post(`/menu/${menuId}/recipe-versions/${versionId}/activate`);
+      toast.push({
+        type: "success",
+        title: "Version activated",
+        message: "The selected recipe version is now active.",
+      });
+      await load();
+    } catch (error) {
+      setError(error?.response?.data?.error || error.message || "Failed to activate recipe version");
+    } finally {
+      setVersionBusy(false);
+    }
+  }
 
   const writeDraft = useCallback(
     (nextLines) => {
@@ -494,6 +551,82 @@ export default function RecipeBuilder({
           <div style={{ marginLeft: "auto", fontWeight: 800 }}>
             Total ingredient cost: {formatMoney(Number.isFinite(totalCost) ? totalCost : 0)}
           </div>
+      </div>
+
+      <div className="card" style={{ padding: 12, marginBottom: 12 }}>
+        <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
+          <div style={{ fontWeight: 800, fontSize: 18 }}>Recipe Versions</div>
+          <button type="button" className="btn btn-primary" onClick={createNewVersion} disabled={versionBusy}>
+            Create New Version
+          </button>
+          <div style={{ color: "#6B7280" }}>
+            Use a new version before changing a locked or approved recipe.
+          </div>
+        </div>
+
+        <div style={{ overflowX: "auto" }}>
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Version</th>
+                <th className="text-right">Cost / Portion</th>
+                <th className="text-right">Diff vs Current</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recipeVersions.map((version) => {
+                const isCurrent = Number(version.id) === Number(recipeVersion?.id);
+                return (
+                  <tr key={version.id}>
+                    <td>
+                      <div style={{ fontWeight: 700 }}>
+                        v{version.version_no}{isCurrent ? " (Current)" : ""}
+                      </div>
+                      <div style={{ color: "#6B7280", fontSize: 12 }}>
+                        {version.ingredient_count || 0} ingredients • {version.is_locked ? "Locked" : "Editable"}
+                      </div>
+                    </td>
+                    <td className="text-right mono">
+                      {version.cost_per_portion == null ? "-" : formatMoney(version.cost_per_portion)}
+                    </td>
+                    <td className="text-right mono">
+                      {version.diff_vs_current == null ? "-" : `${version.diff_vs_current > 0 ? "+" : ""}${formatMoney(version.diff_vs_current)}`}
+                    </td>
+                    <td>
+                      <span className={`badge ${isCurrent ? "badge-active" : "badge-pending"}`}>
+                        {isCurrent ? "Current" : version.is_locked ? "Locked" : "Available"}
+                      </span>
+                    </td>
+                    <td>{formatDateLong(version.created_at)}</td>
+                    <td>
+                      <div className="rowActions">
+                        {isCurrent ? (
+                          <button type="button" className="btn btn-ghost" onClick={lockCurrentVersion} disabled={versionBusy || version.is_locked}>
+                            {version.is_locked ? "Locked" : "Lock"}
+                          </button>
+                        ) : (
+                          <button type="button" className="btn" onClick={() => activateVersion(version.id)} disabled={versionBusy}>
+                            Activate
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {recipeVersions.length === 0 && (
+                <tr>
+                  <td colSpan="6" style={{ padding: 12, opacity: 0.7 }}>
+                    Recipe versions will appear here once a recipe is linked to this menu item.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div style={{ display: "grid", gap: 12 }}>

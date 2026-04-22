@@ -141,7 +141,7 @@ router.post("/:id/create-purchase-order", async (req, res) => {
       !(await tableExists("purchase_orders")) ||
       !(await tableExists("purchase_order_details"))
     ) {
-      return res.status(503).json({ message: "Purchase order setup is incomplete. Run the latest database migration first." });
+      return res.status(503).json({ message: "Purchase record setup is incomplete. Run the latest database migration first." });
     }
 
     await conn.beginTransaction();
@@ -153,14 +153,14 @@ router.post("/:id/create-purchase-order", async (req, res) => {
     }
     if (requestRow.status !== "APPROVED") {
       await conn.rollback();
-      return res.status(400).json({ message: "Only approved purchase requests can be converted to purchase orders." });
+      return res.status(400).json({ message: "Only approved purchase requests can be converted to purchase records." });
     }
 
     if (purchaseOrderCols.purchase_request_id) {
       const [[existingOrder]] = await conn.query("SELECT id FROM purchase_orders WHERE purchase_request_id = ? LIMIT 1", [requestId]);
       if (existingOrder) {
         await conn.rollback();
-        return res.status(409).json({ message: `Purchase order #${existingOrder.id} already exists for this request.`, existingOrderId: existingOrder.id });
+        return res.status(409).json({ message: `Purchase record #${existingOrder.id} already exists for this request.`, existingOrderId: existingOrder.id });
       }
     }
 
@@ -215,7 +215,7 @@ router.post("/:id/create-purchase-order", async (req, res) => {
         action_name: "CREATE_FROM_REQUEST",
         entity_type: "purchase_order",
         entity_id: orderId,
-        summary: `Created purchase order #${orderId} from purchase request #${requestId}.`,
+        summary: `Created purchase record #${orderId} from purchase request #${requestId}.`,
       },
       conn
     );
@@ -225,7 +225,7 @@ router.post("/:id/create-purchase-order", async (req, res) => {
   } catch (err) {
     await conn.rollback();
     console.error("POST /purchase-requests/:id/create-purchase-order failed:", err.message);
-    res.status(500).json({ message: err?.message || "Failed to create purchase order from request" });
+    res.status(500).json({ message: err?.message || "Failed to create purchase record from request" });
   } finally {
     conn.release();
   }

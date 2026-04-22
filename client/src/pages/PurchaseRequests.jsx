@@ -186,7 +186,7 @@ export default function PurchaseRequests() {
 
   async function convertToPurchaseOrder(requestRow) {
     if (!requestRow?.id) return;
-    const storeName = window.prompt("Enter the supplier/store name for this purchase order:");
+    const storeName = window.prompt("Enter the supplier/store name for this purchase record:");
     if (!storeName || !String(storeName).trim()) return;
 
     setConvertingRequestId(requestRow.id);
@@ -196,8 +196,8 @@ export default function PurchaseRequests() {
       });
       toast.push({
         type: "success",
-        title: "Purchase order created",
-        message: `Created purchase order #${response.data?.id} from request PR-${String(requestRow.id).padStart(4, "0")}.`,
+        title: "Purchase record created",
+        message: `Created purchase record #${response.data?.id} from request PR-${String(requestRow.id).padStart(4, "0")}.`,
       });
       if (detailData.request?.id === requestRow.id) {
         setDetailData((current) => ({
@@ -217,7 +217,7 @@ export default function PurchaseRequests() {
       toast.push({
         type: "error",
         title: "Conversion failed",
-        message: error?.response?.data?.message || error.message || "Failed to create purchase order from request",
+        message: error?.response?.data?.message || error.message || "Failed to create purchase record from request",
       });
     } finally {
       setConvertingRequestId(null);
@@ -364,7 +364,7 @@ export default function PurchaseRequests() {
                         {isOwner && row.status === "APPROVED" ? (
                           row.linked_purchase_order_id ? (
                             <button type="button" className="btn btn-ghost" onClick={() => navigate("/admin/purchase-orders")}>
-                              PO #{row.linked_purchase_order_id}
+                              Record #{row.linked_purchase_order_id}
                             </button>
                           ) : (
                             <button type="button" className="btn" disabled={convertingRequestId === row.id} onClick={() => convertToPurchaseOrder(row)}>
@@ -432,8 +432,8 @@ export default function PurchaseRequests() {
                     <DetailCell label="Needed By" value={detailData.request.needed_by_date ? formatDateLong(detailData.request.needed_by_date) : "-"} />
                     <DetailCell label="Review Notes" value={detailData.request.review_notes || "-"} />
                     <DetailCell
-                      label="Purchase Order"
-                      value={detailData.request.linked_purchase_order_id ? `PO #${detailData.request.linked_purchase_order_id}` : "-"}
+                      label="Purchase Record"
+                      value={detailData.request.linked_purchase_order_id ? `Record #${detailData.request.linked_purchase_order_id}` : "-"}
                     />
                   </div>
                 )}
@@ -442,7 +442,7 @@ export default function PurchaseRequests() {
                   <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
                     {detailData.request.linked_purchase_order_id ? (
                       <button type="button" className="btn btn-ghost" onClick={() => navigate("/admin/purchase-orders")}>
-                        Open Linked Purchase Order
+                        Open Linked Purchase Record
                       </button>
                     ) : (
                       <button
@@ -451,7 +451,7 @@ export default function PurchaseRequests() {
                         disabled={convertingRequestId === detailData.request.id}
                         onClick={() => convertToPurchaseOrder(detailData.request)}
                       >
-                        {convertingRequestId === detailData.request.id ? "Converting..." : "Convert to Purchase Order"}
+                        {convertingRequestId === detailData.request.id ? "Converting..." : "Convert to Purchase Record"}
                       </button>
                     )}
                   </div>

@@ -47,10 +47,28 @@ async function getIngredientLocationBalances(conn, ingredientId, totalQty = 0) {
     },
     {}
   );
+  const total = Number(totalQty || 0);
+  let stockroom = Number(balances[STOCKROOM] || 0);
+  let shelf = Number(balances[SHELF] || 0);
+  const combined = Number((stockroom + shelf).toFixed(2));
+
+  // Keep location balances aligned with the ingredient's real total stock.
+  // Older flows may have updated ingredient.quantity without updating location balances.
+  if (Number.isFinite(total) && Number(total.toFixed(2)) !== combined) {
+    shelf = Math.max(Math.min(shelf, total), 0);
+    stockroom = Number((total - shelf).toFixed(2));
+    if (stockroom < 0) {
+      stockroom = 0;
+      shelf = Number(total.toFixed(2));
+    }
+    await setIngredientLocationBalance(conn, ingredientId, STOCKROOM, stockroom);
+    await setIngredientLocationBalance(conn, ingredientId, SHELF, shelf);
+  }
+
   return {
     supported: true,
-    stockroom: Number(balances[STOCKROOM] || 0),
-    shelf: Number(balances[SHELF] || 0),
+    stockroom,
+    shelf,
   };
 }
 
@@ -116,6 +134,7 @@ module.exports = {
   supportsInventoryLocations,
   seedIngredientLocationBalances,
   getIngredientLocationBalances,
+  setIngredientLocationBalance,
   adjustIngredientLocationBalance,
   consumeIngredientLocationBalance,
 };

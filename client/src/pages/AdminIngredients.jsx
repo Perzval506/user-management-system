@@ -15,6 +15,25 @@ const emptyForm = {
   status: "ACTIVE",
 };
 
+const emptyApForm = {
+  supplierName: "",
+  effectiveDate: new Date().toISOString().slice(0, 10),
+  unit: "",
+  apCostPerUnit: "",
+  notes: "",
+};
+
+const emptyQuoteForm = {
+  supplierName: "",
+  quoteDate: new Date().toISOString().slice(0, 10),
+  validUntil: "",
+  brand: "",
+  unit: "",
+  quantity: "",
+  quotedPrice: "",
+  notes: "",
+};
+
 export default function AdminIngredients() {
   const toast = useToast();
   const location = useLocation();
@@ -29,7 +48,16 @@ export default function AdminIngredients() {
   const [form, setForm] = useState(emptyForm);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyData, setHistoryData] = useState({ ingredient: null, history: [] });
+  const [historySaving, setHistorySaving] = useState(false);
+  const [historyData, setHistoryData] = useState({
+    ingredient: null,
+    history: [],
+    ap_prices: [],
+    supplier_quotes: [],
+    current_ap_cost: null,
+  });
+  const [apForm, setApForm] = useState(emptyApForm);
+  const [quoteForm, setQuoteForm] = useState(emptyQuoteForm);
   const [categories, setCategories] = useState([]);
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
@@ -69,6 +97,29 @@ export default function AdminIngredients() {
       setLoading(false);
     }
   }, [toast]);
+
+  const loadHistory = useCallback(
+    async (ingredientId, fallbackRow = null) => {
+      const res = await api.get(`/ingredients/${ingredientId}/history`);
+      const payload = res.data || {
+        ingredient: fallbackRow,
+        history: [],
+        ap_prices: [],
+        supplier_quotes: [],
+        current_ap_cost: null,
+      };
+      setHistoryData(payload);
+      setApForm((current) => ({
+        ...current,
+        unit: payload.ingredient?.base_unit || fallbackRow?.base_unit || "",
+      }));
+      setQuoteForm((current) => ({
+        ...current,
+        unit: payload.ingredient?.base_unit || fallbackRow?.base_unit || "",
+      }));
+    },
+    []
+  );
 
   useEffect(() => {
     load();
@@ -254,10 +305,17 @@ export default function AdminIngredients() {
   async function openHistory(row) {
     setHistoryOpen(true);
     setHistoryLoading(true);
-    setHistoryData({ ingredient: null, history: [] });
+    setHistoryData({ ingredient: null, history: [], ap_prices: [], supplier_quotes: [], current_ap_cost: null });
+    setApForm({
+      ...emptyApForm,
+      unit: row.base_unit || "",
+    });
+    setQuoteForm({
+      ...emptyQuoteForm,
+      unit: row.base_unit || "",
+    });
     try {
-      const res = await api.get(`/ingredients/${row.id}/history`);
-      setHistoryData(res.data || { ingredient: row, history: [] });
+      await loadHistory(row.id, row);
     } catch (error) {
       toast.push({
         type: "error",
@@ -267,6 +325,128 @@ export default function AdminIngredients() {
       setHistoryOpen(false);
     } finally {
       setHistoryLoading(false);
+    }
+  }
+
+  async function submitApPrice() {
+    if (!historyData.ingredient?.id) return;
+    const apCostPerUnit = Number(apForm.apCostPerUnit);
+    if (!apForm.unit) {
+      return toast.push({ type: "error", title: "Missing unit", message: "Select a unit first." });
+    }
+    if (!Number.isFinite(apCostPerUnit) || apCostPerUnit < 0) {
+      return toast.push({ type: "error", title: "Invalid AP cost", message: "AP cost must be 0 or greater." });
+    }
+    setHistorySaving(true);
+    try {
+      await api.post(`/ingredients/${historyData.ingredient.id}/ap-prices`, {
+        supplierName: apForm.supplierName,
+        effectiveDate: apForm.effectiveDate,
+        unit: apForm.unit,
+        apCostPerUnit,
+        notes: apForm.notes,
+      });
+      toast.push({ type: "success", title: "Saved", message: "AP price saved." });
+      setApForm((current) => ({
+        ...emptyApForm,
+        effectiveDate: current.effectiveDate,
+        unit: current.unit,
+      }));
+      await loadHistory(historyData.ingredient.id, historyData.ingredient);
+      await load();
+    } catch (error) {
+      toast.push({
+        type: "error",
+        title: "Save failed",
+        message: error?.response?.data?.message || error.message || "Failed to save AP price",
+      });
+    } finally {
+      setHistorySaving(false);
+    }
+  }
+
+  async function rollbackApPrice(priceId) {
+    if (!historyData.ingredient?.id) return;
+    setHistorySaving(true);
+    try {
+      await api.post(`/ingredients/${historyData.ingredient.id}/ap-prices/${priceId}/rollback`);
+      toast.push({ type: "success", title: "Rollback complete", message: "AP cost was restored from the selected history row." });
+      await loadHistory(historyData.ingredient.id, historyData.ingredient);
+      await load();
+    } catch (error) {
+      toast.push({
+        type: "error",
+        title: "Rollback failed",
+        message: error?.response?.data?.message || error.message || "Failed to rollback AP price",
+      });
+    } finally {
+      setHistorySaving(false);
+    }
+  }
+
+  async function submitSupplierQuote() {
+    if (!historyData.ingredient?.id) return;
+    const quotedPrice = Number(quoteForm.quotedPrice);
+    const quantity = quoteForm.quantity === "" ? null : Number(quoteForm.quantity);
+    if (!quoteForm.supplierName.trim()) {
+      return toast.push({ type: "error", title: "Missing supplier", message: "Supplier name is required." });
+    }
+    if (!quoteForm.unit) {
+      return toast.push({ type: "error", title: "Missing unit", message: "Select a unit first." });
+    }
+    if (!Number.isFinite(quotedPrice) || quotedPrice < 0) {
+      return toast.push({ type: "error", title: "Invalid quoted price", message: "Quoted price must be 0 or greater." });
+    }
+    if (quantity !== null && (!Number.isFinite(quantity) || quantity <= 0)) {
+      return toast.push({ type: "error", title: "Invalid quantity", message: "Quoted quantity must be greater than 0." });
+    }
+
+    setHistorySaving(true);
+    try {
+      await api.post(`/ingredients/${historyData.ingredient.id}/supplier-quotes`, {
+        supplierName: quoteForm.supplierName,
+        quoteDate: quoteForm.quoteDate,
+        validUntil: quoteForm.validUntil || null,
+        brand: quoteForm.brand,
+        unit: quoteForm.unit,
+        quantity,
+        quotedPrice,
+        notes: quoteForm.notes,
+      });
+      toast.push({ type: "success", title: "Saved", message: "Supplier quote recorded." });
+      setQuoteForm((current) => ({
+        ...emptyQuoteForm,
+        quoteDate: current.quoteDate,
+        unit: current.unit,
+      }));
+      await loadHistory(historyData.ingredient.id, historyData.ingredient);
+    } catch (error) {
+      toast.push({
+        type: "error",
+        title: "Save failed",
+        message: error?.response?.data?.message || error.message || "Failed to save supplier quote",
+      });
+    } finally {
+      setHistorySaving(false);
+    }
+  }
+
+  async function applySupplierQuote(quoteId) {
+    if (!historyData.ingredient?.id) return;
+    setHistorySaving(true);
+    try {
+      await api.post(`/ingredients/${historyData.ingredient.id}/supplier-quotes/${quoteId}/use`);
+      toast.push({ type: "success", title: "Quote applied", message: "The selected supplier quote is now part of AP price history." });
+      await loadHistory(historyData.ingredient.id, historyData.ingredient);
+      await load();
+    } catch (error) {
+      toast.push({
+        type: "error",
+        title: "Use Quote failed",
+        message: error?.response?.data?.message || error.message || "Failed to use supplier quote",
+      });
+    } finally {
+      setHistorySaving(false);
     }
   }
 
@@ -324,6 +504,7 @@ export default function AdminIngredients() {
                   <th>Category</th>
                   <th>Base unit size</th>
                   <th>Quantity</th>
+                  <th>Current AP Cost</th>
                   <th>Last updated</th>
                   <th>Status</th>
                   <th>Actions</th>
@@ -337,6 +518,9 @@ export default function AdminIngredients() {
                     <td>{row.category || "-"}</td>
                     <td>{row.base_unit_qty ? `${formatNumber(row.base_unit_qty)} ${row.base_unit}` : row.base_unit || "-"}</td>
                     <td className="text-right mono">{formatNumber(row.quantity ?? 0)}</td>
+                    <td className="text-right mono">
+                      {row.current_ap_cost != null ? `${formatMoney(row.current_ap_cost)} / ${row.base_unit || "-"}` : "-"}
+                    </td>
                     <td>{row.lastUpdated ? formatDateTimeFriendly(row.lastUpdated) : "-"}</td>
                     <td>
                       <span className={`badge ${row.status === "ACTIVE" ? "badge-active" : "badge-inactive"}`}>
@@ -359,7 +543,7 @@ export default function AdminIngredients() {
 
                 {visibleItems.length === 0 && (
                   <tr>
-                    <td colSpan="7" className="tableEmpty">
+                    <td colSpan="8" className="tableEmpty">
                       No ingredients found. Create your first ingredient to start tracking stock and recipes.
                     </td>
                   </tr>
@@ -370,7 +554,6 @@ export default function AdminIngredients() {
         )}
       </div>
 
-      {/* UX cleanup: ingredient setup now uses clearer management language and field guidance. */}
       {open && (
         <div className="modalBackdrop" onClick={closeModal}>
           <div className="modalCard modalCard-md" onClick={(event) => event.stopPropagation()}>
@@ -408,7 +591,7 @@ export default function AdminIngredients() {
                   Example: 1 kg, 1 pack, or 500 g. Recipes will use this as the ingredient&apos;s starting unit.
                 </div>
                 <div className="formRow2">
-                <input name="base_unit_qty" value={form.base_unit_qty} onChange={onChange} className="input" type="number" step="0.01" min="0.01" placeholder="e.g., 1.00" />
+                  <input name="base_unit_qty" value={form.base_unit_qty} onChange={onChange} className="input" type="number" step="0.01" min="0.01" placeholder="e.g., 1.00" />
                   <select name="base_unit" value={form.base_unit} onChange={onChange} className="input">
                     <option value="">-- select unit --</option>
                     {units.map((unit) => (
@@ -472,7 +655,7 @@ export default function AdminIngredients() {
       )}
       {historyOpen && (
         <div className="modalBackdrop" onClick={() => setHistoryOpen(false)}>
-          <div className="modalCard modalCard-md" onClick={(event) => event.stopPropagation()}>
+          <div className="modalCard modalCard-wide" onClick={(event) => event.stopPropagation()}>
             <div className="modalHead">
               <div>
                 <h3 className="modalTitle">Ingredient History</h3>
@@ -488,36 +671,304 @@ export default function AdminIngredients() {
             {historyLoading ? (
               <div className="tableLoading">Loading history...</div>
             ) : (
-              <div className="tableScroller">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Date</th>
-                      <th>Source</th>
-                      <th>Brand</th>
-                      <th>Unit</th>
-                      <th className="text-right">Quantity</th>
-                      <th className="text-right">Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {historyData.history.map((entry) => (
-                      <tr key={`${entry.source_type}-${entry.id}`}>
-                        <td>{formatDateLong(entry.activity_date)}</td>
-                        <td>{entry.source_type === "PURCHASE_ORDER" ? "Purchase Order" : "Purchase"}</td>
-                        <td>{entry.brand || "-"}</td>
-                        <td>{entry.unit || historyData.ingredient?.base_unit || "-"}</td>
-                        <td className="text-right mono">{formatNumber(entry.quantity || 0)}</td>
-                        <td className="text-right mono">{formatMoney(entry.amount || 0)}</td>
-                      </tr>
-                    ))}
-                    {historyData.history.length === 0 && (
+              <div className="modalSection" style={{ display: "grid", gap: 16 }}>
+                <div className="dashboardStatGrid dashboardStatGridOwnerPrimary">
+                  <div className="card dashboardMetricCard">
+                    <div className="dashboardMetricLabel">Current AP cost</div>
+                    <div className="dashboardMetricValue">
+                      {historyData.current_ap_cost != null ? formatMoney(historyData.current_ap_cost) : "-"}
+                    </div>
+                  </div>
+                  <div className="card dashboardMetricCard">
+                    <div className="dashboardMetricLabel">AP price history</div>
+                    <div className="dashboardMetricValue">{historyData.ap_prices?.length || 0}</div>
+                  </div>
+                  <div className="card dashboardMetricCard">
+                    <div className="dashboardMetricLabel">Supplier quotes</div>
+                    <div className="dashboardMetricValue">{historyData.supplier_quotes?.length || 0}</div>
+                  </div>
+                </div>
+
+                <div className="formRow2" style={{ alignItems: "start" }}>
+                  <div className="card" style={{ padding: 16 }}>
+                    <div className="tableTopBar">AP Cost Management</div>
+                    <div className="formGrid">
+                      <div className="formRow2">
+                        <div>
+                          <label>Supplier</label>
+                          <input
+                            className="input"
+                            value={apForm.supplierName}
+                            onChange={(event) => setApForm((current) => ({ ...current, supplierName: event.target.value }))}
+                            placeholder="Optional supplier"
+                          />
+                        </div>
+                        <div>
+                          <label>Effective date</label>
+                          <input
+                            className="input"
+                            type="date"
+                            value={apForm.effectiveDate}
+                            onChange={(event) => setApForm((current) => ({ ...current, effectiveDate: event.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="formRow2">
+                        <div>
+                          <label>Unit</label>
+                          <select
+                            className="input"
+                            value={apForm.unit}
+                            onChange={(event) => setApForm((current) => ({ ...current, unit: event.target.value }))}
+                          >
+                            <option value="">Select unit</option>
+                            {units.map((unit) => (
+                              <option key={unit} value={unit}>{unit}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label>AP cost per unit</label>
+                          <input
+                            className="input"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={apForm.apCostPerUnit}
+                            onChange={(event) => setApForm((current) => ({ ...current, apCostPerUnit: event.target.value }))}
+                            placeholder="0.00"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label>Notes</label>
+                        <input
+                          className="input"
+                          value={apForm.notes}
+                          onChange={(event) => setApForm((current) => ({ ...current, notes: event.target.value }))}
+                          placeholder="Optional note for the price change"
+                        />
+                      </div>
+                      <div className="formActions">
+                        <button type="button" className="btn btn-primary" onClick={submitApPrice} disabled={historySaving}>
+                          Save AP Price
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="card" style={{ padding: 16 }}>
+                    <div className="tableTopBar">Supplier Quotes</div>
+                    <div className="formGrid">
+                      <div className="formRow2">
+                        <div>
+                          <label>Supplier</label>
+                          <input
+                            className="input"
+                            value={quoteForm.supplierName}
+                            onChange={(event) => setQuoteForm((current) => ({ ...current, supplierName: event.target.value }))}
+                            placeholder="Supplier name"
+                          />
+                        </div>
+                        <div>
+                          <label>Quote date</label>
+                          <input
+                            className="input"
+                            type="date"
+                            value={quoteForm.quoteDate}
+                            onChange={(event) => setQuoteForm((current) => ({ ...current, quoteDate: event.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="formRow2">
+                        <div>
+                          <label>Valid until</label>
+                          <input
+                            className="input"
+                            type="date"
+                            value={quoteForm.validUntil}
+                            onChange={(event) => setQuoteForm((current) => ({ ...current, validUntil: event.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <label>Brand</label>
+                          <input
+                            className="input"
+                            value={quoteForm.brand}
+                            onChange={(event) => setQuoteForm((current) => ({ ...current, brand: event.target.value }))}
+                            placeholder="Optional brand"
+                          />
+                        </div>
+                      </div>
+                      <div className="formRow2">
+                        <div>
+                          <label>Unit</label>
+                          <select
+                            className="input"
+                            value={quoteForm.unit}
+                            onChange={(event) => setQuoteForm((current) => ({ ...current, unit: event.target.value }))}
+                          >
+                            <option value="">Select unit</option>
+                            {units.map((unit) => (
+                              <option key={unit} value={unit}>{unit}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label>Quoted quantity</label>
+                          <input
+                            className="input"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={quoteForm.quantity}
+                            onChange={(event) => setQuoteForm((current) => ({ ...current, quantity: event.target.value }))}
+                            placeholder="Optional quantity"
+                          />
+                        </div>
+                      </div>
+                      <div className="formRow2">
+                        <div>
+                          <label>Quoted price</label>
+                          <input
+                            className="input"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={quoteForm.quotedPrice}
+                            onChange={(event) => setQuoteForm((current) => ({ ...current, quotedPrice: event.target.value }))}
+                            placeholder="0.00"
+                          />
+                        </div>
+                        <div>
+                          <label>Notes</label>
+                          <input
+                            className="input"
+                            value={quoteForm.notes}
+                            onChange={(event) => setQuoteForm((current) => ({ ...current, notes: event.target.value }))}
+                            placeholder="Optional quote note"
+                          />
+                        </div>
+                      </div>
+                      <div className="formActions">
+                        <button type="button" className="btn btn-primary" onClick={submitSupplierQuote} disabled={historySaving}>
+                          Save Quote
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="tableScroller">
+                  <table className="table">
+                    <thead>
                       <tr>
-                        <td colSpan="6" className="tableEmpty">No purchase history found for this ingredient yet.</td>
+                        <th>Date</th>
+                        <th>Source</th>
+                        <th>Brand</th>
+                        <th>Unit</th>
+                        <th className="text-right">Quantity</th>
+                        <th className="text-right">Amount</th>
                       </tr>
-                    )}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {historyData.history.map((entry) => (
+                        <tr key={`${entry.source_type}-${entry.id}`}>
+                          <td>{formatDateLong(entry.activity_date)}</td>
+                          <td>{entry.source_type === "PURCHASE_ORDER" ? "Purchase Order" : "Purchase"}</td>
+                          <td>{entry.brand || "-"}</td>
+                          <td>{entry.unit || historyData.ingredient?.base_unit || "-"}</td>
+                          <td className="text-right mono">{formatNumber(entry.quantity || 0)}</td>
+                          <td className="text-right mono">{formatMoney(entry.amount || 0)}</td>
+                        </tr>
+                      ))}
+                      {historyData.history.length === 0 && (
+                        <tr>
+                          <td colSpan="6" className="tableEmpty">No purchase history found for this ingredient yet.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="tableScroller">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Source</th>
+                        <th>Supplier</th>
+                        <th>Previous Cost</th>
+                        <th>New Cost</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {historyData.ap_prices.map((entry, index) => {
+                        const previous = historyData.ap_prices[index + 1];
+                        return (
+                          <tr key={`ap-${entry.id}`}>
+                            <td>{formatDateLong(entry.effective_date || entry.created_at)}</td>
+                            <td>AP PRICE</td>
+                            <td>{entry.supplier_name || "-"}</td>
+                            <td className="text-right mono">{previous ? formatMoney(previous.ap_cost_per_unit) : "-"}</td>
+                            <td className="text-right mono">{formatMoney(entry.ap_cost_per_unit)}</td>
+                            <td>
+                              <div className="rowActions">
+                                <button type="button" className="btn btn-ghost" onClick={() => rollbackApPrice(entry.id)} disabled={historySaving}>
+                                  Rollback
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {historyData.ap_prices.length === 0 && (
+                        <tr>
+                          <td colSpan="6" className="tableEmpty">No AP price history recorded yet.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="tableScroller">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Supplier</th>
+                        <th>Brand</th>
+                        <th>Unit</th>
+                        <th className="text-right">Quoted Price</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {historyData.supplier_quotes.map((entry) => (
+                        <tr key={`quote-${entry.quote_item_id || entry.id}`}>
+                          <td>{formatDateLong(entry.quote_date || entry.created_at)}</td>
+                          <td>{entry.supplier_name}</td>
+                          <td>{entry.brand || "-"}</td>
+                          <td>{entry.unit || historyData.ingredient?.base_unit || "-"}</td>
+                          <td className="text-right mono">{formatMoney(entry.quoted_price)}</td>
+                          <td>
+                            <div className="rowActions">
+                              <button type="button" className="btn" onClick={() => applySupplierQuote(entry.id)} disabled={historySaving}>
+                                Use Quote
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {historyData.supplier_quotes.length === 0 && (
+                        <tr>
+                          <td colSpan="6" className="tableEmpty">No supplier quotes recorded yet.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </div>

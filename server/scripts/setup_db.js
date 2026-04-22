@@ -168,6 +168,69 @@ async function applyRecipePricePatch(conn) {
   await ensureColumn(conn, "recipe_ingredients", "price", "DECIMAL(12,2) NULL");
 }
 
+async function applyIngredientPricingPatches(conn) {
+  logStep("Applying ingredient pricing patches...");
+
+  await ensureColumn(conn, "ingredients", "current_ap_cost", "DECIMAL(12,4) NULL");
+  await ensureColumn(conn, "menu_price_history", "synced_to_pos", "TINYINT(1) NOT NULL DEFAULT 0");
+}
+
+async function applyInventoryLocationPatches(conn) {
+  logStep("Applying inventory location patches...");
+
+  await ensureTable(
+    conn,
+    "inventory_locations",
+    `
+      CREATE TABLE IF NOT EXISTS inventory_locations (
+        location_code VARCHAR(30) PRIMARY KEY,
+        location_name VARCHAR(120) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `
+  );
+
+  await ensureTable(
+    conn,
+    "inventory_location_balances",
+    `
+      CREATE TABLE IF NOT EXISTS inventory_location_balances (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        ingredient_id INT NOT NULL,
+        location_code VARCHAR(30) NOT NULL,
+        quantity DECIMAL(12,3) NOT NULL DEFAULT 0.000,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_inventory_location_balance (ingredient_id, location_code),
+        CONSTRAINT fk_inventory_location_balance_ingredient
+          FOREIGN KEY (ingredient_id) REFERENCES ingredients(id)
+          ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `
+  );
+
+  const hasLocationCode = await columnExists(conn, "inventory_locations", "location_code");
+  const hasLocationName = await columnExists(conn, "inventory_locations", "location_name");
+  const hasLegacyCode = await columnExists(conn, "inventory_locations", "code");
+  const hasLegacyDisplayName = await columnExists(conn, "inventory_locations", "display_name");
+
+  if (hasLocationCode && hasLocationName) {
+    await conn.query(
+      `INSERT INTO inventory_locations (location_code, location_name)
+       VALUES ('STOCKROOM', 'Stockroom'), ('SHELF', 'Shelf')
+       ON DUPLICATE KEY UPDATE location_name = VALUES(location_name)`
+    );
+  } else if (hasLegacyCode && hasLegacyDisplayName) {
+    await conn.query(
+      `INSERT INTO inventory_locations (code, display_name)
+       VALUES ('STOCKROOM', 'Stockroom'), ('SHELF', 'Shelf')
+       ON DUPLICATE KEY UPDATE display_name = VALUES(display_name)`
+    );
+  } else {
+    logInfo("inventory_locations uses an unexpected structure; skipped default location seeding");
+  }
+}
+
 async function applyPurchasingAndSalesPatches(conn) {
   logStep("Applying purchasing/sales relational patches...");
 
@@ -484,6 +547,8 @@ async function main() {
     await applySchemaFromFile(conn);
     await applyBaseUnitPatches(conn);
     await applyRecipePricePatch(conn);
+    await applyIngredientPricingPatches(conn);
+    await applyInventoryLocationPatches(conn);
     await applyPurchasingAndSalesPatches(conn);
     await applyAuditPatches(conn);
     await seedAdmin(conn);
