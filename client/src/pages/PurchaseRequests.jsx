@@ -230,7 +230,7 @@ export default function PurchaseRequests() {
         <div>
           <h2 className="pageTitle">Purchase Requests</h2>
           <div className="pageSub">
-            {isOwner ? "Review stockroom requests before turning them into actual purchases." : "Request ingredients that need to be bought. Admin reviews these before purchasing."}
+            {isOwner ? "Approve or reject stockroom requests." : "Request ingredients for owner review."}
           </div>
         </div>
         <div className="badge mono">Pending: {formatNumber(requestCount, 0)}</div>
@@ -364,11 +364,11 @@ export default function PurchaseRequests() {
                         {isOwner && row.status === "APPROVED" ? (
                           row.linked_purchase_order_id ? (
                             <button type="button" className="btn btn-ghost" onClick={() => navigate("/admin/purchase-orders")}>
-                              Record #{row.linked_purchase_order_id}
+                              Receipt #{row.linked_purchase_order_id}
                             </button>
                           ) : (
                             <button type="button" className="btn" disabled={convertingRequestId === row.id} onClick={() => convertToPurchaseOrder(row)}>
-                              {convertingRequestId === row.id ? "Converting..." : "Create PO"}
+                              {convertingRequestId === row.id ? "Creating..." : "Create receipt"}
                             </button>
                           )
                         ) : null}
@@ -407,8 +407,8 @@ export default function PurchaseRequests() {
       />
 
       {detailOpen && (
-        <div style={modalBackdrop} onClick={() => setDetailOpen(false)}>
-          <div style={modalCard} onClick={(event) => event.stopPropagation()}>
+        <div className="modalBackdrop" onClick={() => setDetailOpen(false)}>
+          <div className="modalCard modalCard-wide" onClick={(event) => event.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 12 }}>
               <div>
                 <h3 style={{ margin: 0 }}>Purchase Request Details</h3>
@@ -433,7 +433,7 @@ export default function PurchaseRequests() {
                     <DetailCell label="Review Notes" value={detailData.request.review_notes || "-"} />
                     <DetailCell
                       label="Purchase Record"
-                      value={detailData.request.linked_purchase_order_id ? `Record #${detailData.request.linked_purchase_order_id}` : "-"}
+                      value={detailData.request.linked_purchase_order_id ? `Receipt #${detailData.request.linked_purchase_order_id}` : "-"}
                     />
                   </div>
                 )}
@@ -490,23 +490,9 @@ export default function PurchaseRequests() {
 
 function DetailCell({ label, value }) {
   return (
-    <div style={{ padding: 12, borderRadius: 12, border: "1px solid #E7EAF3", background: "#FBFBFE" }}>
-      <div style={{ color: "#6B7280", marginBottom: 4, fontSize: 12 }}>{label}</div>
-      <div style={{ fontWeight: 800 }}>{value}</div>
+    <div className="detailCell">
+      <div className="detailCellLabel">{label}</div>
+      <div className="detailCellValue">{value}</div>
     </div>
   );
 }
-
-const modalBackdrop = {
-  position: "fixed",
-  inset: 0,
-  background: "rgba(15, 23, 42, 0.24)",
-  backdropFilter: "blur(3px) saturate(104%)",
-  WebkitBackdropFilter: "blur(3px) saturate(104%)",
-  display: "grid",
-  placeItems: "center",
-  padding: 16,
-  zIndex: 200000,
-  overflowY: "auto",
-};
-const modalCard = { width: "min(920px, 100%)", background: "white", borderRadius: 14, padding: 16, boxShadow: "0 18px 60px rgba(0,0,0,0.35)" };

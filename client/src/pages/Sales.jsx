@@ -387,7 +387,7 @@ export default function Sales() {
       <div className="pageHeader">
         <div>
           <h2 className="pageTitle">Sales</h2>
-          <div className="pageSub">Record completed sales and compare revenue using the same clean workflow as purchasing.</div>
+          <div className="pageSub">Daily sales entry and closeout.</div>
         </div>
         <div className="pageActions">
           <button type="button" className="btn" onClick={printSalesSummary}>Print Summary</button>
@@ -400,12 +400,12 @@ export default function Sales() {
         <SummaryCard label="Today" value={formatMoney(summary.todayRevenue)} />
         <SummaryCard label={`Selected day (${formatDateLong(form.saleDate)})`} value={formatMoney(summary.selectedDayRevenue)} />
         <SummaryCard label="Completed sales" value={formatNumber(summary.totalTransactions || 0, 0)} />
-        <SummaryCard label="Current sale preview" value={formatMoney(salePreviewTotal)} />
+        <SummaryCard label="Sale total preview" value={formatMoney(salePreviewTotal)} />
       </div>
 
       <div className="card salesDayCard">
         <div>
-          <div className="salesDayMetaLabel">Sales day status</div>
+          <div className="salesDayMetaLabel">Day close status</div>
           <div className="salesDayMetaRow">
             <span className={`badge ${dayStatus.isClosed ? "badge-active" : "badge-muted"}`}>
               {dayStatus.isClosed ? "DAY COMPLETED" : "OPEN"}
@@ -490,17 +490,18 @@ export default function Sales() {
           </div>
 
           <div className="tableWrap salesItemsTableWrap">
-            <div className="tableTopBar">Sale Items</div>
-            <div className="tableScroller">
+          <div className="tableTopBar">Items in This Sale</div>
+          <div className="tableSectionNote">Prices use latest menu history.</div>
+          <div className="tableScroller">
               <table className="table table-wide">
                 <thead>
                   <tr>
                     <th>Menu item</th>
                     <th className="text-right">Quantity</th>
-                    <th className="text-right">Current price</th>
+                    <th className="text-right">Selling price</th>
                     {supportsContainerCharge(form.orderType) ? <th>Takeout container</th> : null}
                     {supportsContainerCharge(form.orderType) ? <th className="text-right">Container total</th> : null}
-                    <th className="text-right">Line total</th>
+                    <th className="text-right">Item total</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -613,7 +614,7 @@ export default function Sales() {
           </div>
 
           <div className="salesActionsBar">
-            <button type="button" className="btn" onClick={addLine}>Add Line</button>
+            <button type="button" className="btn" onClick={addLine}>Add item</button>
             <button type="submit" className="btn btn-primary" disabled={saving || dayStatus.isClosed}>
               {dayStatus.isClosed ? "Sales Closed For This Day" : saving ? "Saving..." : "Record Sale"}
             </button>
@@ -700,7 +701,7 @@ export default function Sales() {
                 ))}
                 {breakdown.length === 0 && (
                   <tr>
-                    <td colSpan="3" className="tableEmpty">Revenue breakdown will appear here once sales are recorded.</td>
+                    <td colSpan="3" className="tableEmpty">No revenue breakdown yet.</td>
                   </tr>
                 )}
               </tbody>

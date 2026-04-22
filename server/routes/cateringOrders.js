@@ -196,9 +196,15 @@ router.get("/", async (_req, res) => {
       return res.json([]);
     }
 
+    const cateringCols = await getCateringOrderColumns();
     const [rows] = await pool.query(
-      `SELECT co.id, co.customer_name, co.contact_number, co.event_date, co.event_time, co.venue,
+      `SELECT co.id, co.customer_name, co.contact_number, co.event_date,
+              ${cateringCols.event_start_time ? "co.event_start_time" : "co.event_time AS event_start_time"},
+              ${cateringCols.event_end_time ? "co.event_end_time" : "NULL AS event_end_time"},
+              co.event_time,
+              co.venue,
               co.pax_count, co.status, co.total_amount, co.deposit_amount, co.balance_amount,
+              ${cateringCols.quote_price_per_pax ? "co.quote_price_per_pax" : "0 AS quote_price_per_pax"},
               co.created_at, creator.full_name AS created_by_name, COUNT(coi.id) AS item_count
          FROM catering_orders co
          LEFT JOIN users creator ON creator.id = co.created_by_user_id
@@ -386,8 +392,11 @@ router.post("/", async (req, res) => {
   const contactNumber = String(req.body?.contactNumber || "").trim() || null;
   const eventDate = String(req.body?.eventDate || "").trim();
   const eventTime = String(req.body?.eventTime || "").trim() || null;
+  const eventStartTime = String(req.body?.eventStartTime || req.body?.event_start_time || eventTime || "").trim() || null;
+  const eventEndTime = String(req.body?.eventEndTime || req.body?.event_end_time || "").trim() || null;
   const venue = String(req.body?.venue || "").trim() || null;
   const paxCount = Number(req.body?.paxCount || 0);
+  const quotePricePerPax = round2(req.body?.quotePricePerPax ?? req.body?.quote_price_per_pax ?? 0);
   const notes = String(req.body?.notes || "").trim() || null;
   const discountAmount = round2(req.body?.discountAmount || 0);
   const depositAmount = round2(req.body?.depositAmount || 0);
@@ -396,6 +405,9 @@ router.post("/", async (req, res) => {
   if (!customerName) return res.status(400).json({ message: "customerName is required." });
   if (!eventDate) return res.status(400).json({ message: "eventDate is required." });
   if (!Number.isFinite(paxCount) || paxCount <= 0) return res.status(400).json({ message: "paxCount must be greater than 0." });
+  if (!Number.isFinite(quotePricePerPax) || quotePricePerPax < 0) {
+    return res.status(400).json({ message: "quotePricePerPax must be 0 or greater." });
+  }
   if (!items.length) return res.status(400).json({ message: "At least one catering item is required." });
 
   const cleanedItems = [];
@@ -403,7 +415,6 @@ router.post("/", async (req, res) => {
     const menuItemId = item.menuItemId == null || item.menuItemId === "" ? null : Number(item.menuItemId);
     const itemName = String(item.itemName || "").trim();
     const quantity = Number(item.quantity);
-    const unitPrice = round2(item.unitPrice || 0);
     const notesValue = String(item.notes || "").trim() || null;
 
     if (menuItemId != null && (!Number.isFinite(menuItemId) || menuItemId <= 0)) {
@@ -415,21 +426,17 @@ router.post("/", async (req, res) => {
     if (!Number.isFinite(quantity) || quantity <= 0) {
       return res.status(400).json({ message: `Catering item ${index + 1} needs a quantity greater than 0.` });
     }
-    if (!Number.isFinite(unitPrice) || unitPrice < 0) {
-      return res.status(400).json({ message: `Catering item ${index + 1} needs a valid unit price.` });
-    }
-
     cleanedItems.push({
       menuItemId,
       itemName,
       quantity: round2(quantity),
-      unitPrice,
-      lineTotal: round2(quantity * unitPrice),
+      unitPrice: 0,
+      lineTotal: 0,
       notes: notesValue,
     });
   }
 
-  const subtotal = round2(cleanedItems.reduce((sum, item) => sum + item.lineTotal, 0));
+  const subtotal = round2(Math.round(paxCount) * quotePricePerPax);
   const totalAmount = round2(Math.max(subtotal - discountAmount, 0));
   const finalDeposit = round2(Math.min(Math.max(depositAmount, 0), totalAmount));
   const balanceAmount = round2(totalAmount - finalDeposit);
@@ -440,28 +447,45 @@ router.post("/", async (req, res) => {
       return res.status(503).json({ message: "Catering setup is incomplete. Run the latest database migration first." });
     }
 
+    const cateringCols = await getCateringOrderColumns();
     await conn.beginTransaction();
+    const orderFields = [];
+    const orderPlaceholders = [];
+    const orderValues = [];
+    const addOrderValue = (field, value) => {
+      orderFields.push(field);
+      orderPlaceholders.push("?");
+      orderValues.push(value);
+    };
+    const addOrderSql = (field, sql) => {
+      orderFields.push(field);
+      orderPlaceholders.push(sql);
+    };
+
+    addOrderValue("customer_name", customerName);
+    addOrderValue("contact_number", contactNumber);
+    addOrderValue("event_date", eventDate);
+    addOrderValue("event_time", eventStartTime);
+    if (cateringCols.event_start_time) addOrderValue("event_start_time", eventStartTime);
+    if (cateringCols.event_end_time) addOrderValue("event_end_time", eventEndTime);
+    addOrderValue("venue", venue);
+    addOrderValue("pax_count", Math.round(paxCount));
+    if (cateringCols.quote_price_per_pax) addOrderValue("quote_price_per_pax", quotePricePerPax);
+    addOrderValue("status", "DRAFT");
+    addOrderValue("notes", notes);
+    addOrderValue("subtotal", subtotal);
+    addOrderValue("discount_amount", discountAmount);
+    addOrderValue("total_amount", totalAmount);
+    addOrderValue("deposit_amount", finalDeposit);
+    addOrderValue("balance_amount", balanceAmount);
+    addOrderValue("created_by_user_id", req.user?.id || null);
+    addOrderSql("created_at", "NOW()");
+    addOrderSql("updated_at", "NOW()");
+
     const [orderResult] = await conn.query(
-      `INSERT INTO catering_orders
-        (customer_name, contact_number, event_date, event_time, venue, pax_count, status, notes,
-         subtotal, discount_amount, total_amount, deposit_amount, balance_amount, created_by_user_id,
-         created_at, updated_at)
-       VALUES (?,?,?,?,?,?, 'DRAFT', ?,?,?,?,?,?,?, NOW(), NOW())`,
-      [
-        customerName,
-        contactNumber,
-        eventDate,
-        eventTime,
-        venue,
-        Math.round(paxCount),
-        notes,
-        subtotal,
-        discountAmount,
-        totalAmount,
-        finalDeposit,
-        balanceAmount,
-        req.user?.id || null,
-      ]
+      `INSERT INTO catering_orders (${orderFields.join(", ")})
+       VALUES (${orderPlaceholders.join(", ")})`,
+      orderValues
     );
 
     const cateringOrderId = orderResult.insertId;

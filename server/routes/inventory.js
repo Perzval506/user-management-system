@@ -44,6 +44,7 @@ function normalizeLocation(value) {
 async function fetchInventoryRows(connOrPool) {
   const ingredientCols = await getColumns("ingredients");
   const hasQuantity = Boolean(ingredientCols.quantity);
+  const activeIngredientWhere = ingredientCols.status ? "WHERE i.status = 'ACTIVE'" : "";
   const hasPurchaseOrderDetails = await tableExists("purchase_order_details");
   const totalStockSql = hasQuantity
     ? "COALESCE(i.quantity, 0)"
@@ -56,8 +57,10 @@ async function fetchInventoryRows(connOrPool) {
            i.ingredient_name,
            i.category,
            i.base_unit,
+           ${ingredientCols.status ? "i.status" : "'ACTIVE' AS status"},
            ${totalStockSql} AS total_stock
       FROM ingredients i
+     ${activeIngredientWhere}
      ORDER BY i.ingredient_name ASC
   `);
 
@@ -98,6 +101,7 @@ router.get("/weekly-review", async (_req, res) => {
   try {
     const ingredientCols = await getColumns("ingredients");
     const hasQuantity = Boolean(ingredientCols.quantity);
+    const activeIngredientWhere = ingredientCols.status ? "WHERE i.status = 'ACTIVE'" : "";
     const lastUpdatedSql = ingredientCols.last_updated
       ? "i.last_updated"
       : ingredientCols.updated_at
@@ -115,9 +119,11 @@ router.get("/weekly-review", async (_req, res) => {
              i.ingredient_name,
              i.category,
              i.base_unit,
+             ${ingredientCols.status ? "i.status" : "'ACTIVE' AS status"},
              ${totalStockSql} AS total_stock,
              ${lastUpdatedSql}
         FROM ingredients i
+       ${activeIngredientWhere}
        ORDER BY COALESCE(i.category, 'UNCATEGORIZED') ASC, i.ingredient_name ASC
     `);
 

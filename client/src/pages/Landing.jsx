@@ -34,7 +34,7 @@ export default function Landing() {
       <div className="lp-centerWrap">
         <div className="lp-hero">
           <h1 className="lp-title">Boyd's Pizza House</h1>
-          <h2 className="lp-subtitle">User Management System</h2>
+          <h2 className="lp-subtitle">Restaurant Operations</h2>
 
           <div className="lp-actions">
             <Link className="lp-btn lp-btnSolid" to="/login">

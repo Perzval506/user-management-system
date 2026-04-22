@@ -40,8 +40,8 @@ export default function AuditLogs() {
     <div className="page">
       <div className="pageHeader">
         <div>
-          <h2 className="pageTitle">Audit Logs</h2>
-          <div className="pageSub">Track create, update, activation, deactivation, pricing, and sales actions across the system.</div>
+          <h2 className="pageTitle">Activity Log</h2>
+          <div className="pageSub">Record changes and user activity.</div>
         </div>
         <div className="pageActions">
           <button type="button" className="btn btn-ghost" onClick={load}>Refresh</button>
@@ -78,7 +78,7 @@ export default function AuditLogs() {
       </div>
 
       <div className="tableWrap">
-        <div className="tableTopBar">Audit Entries</div>
+        <div className="tableTopBar">Recent Activity</div>
         {loading ? (
           <div style={{ padding: 12 }}>Loading...</div>
         ) : (

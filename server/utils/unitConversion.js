@@ -1,19 +1,37 @@
 const MASS_FACTORS = {
   mg: 0.001,
   g: 1,
+  gram: 1,
+  grams: 1,
   kg: 1000,
+  kilogram: 1000,
+  kilograms: 1000,
 };
 
 const VOLUME_FACTORS = {
+  ml: 1 / 4.92892,
+  milliliter: 1 / 4.92892,
+  milliliters: 1 / 4.92892,
   teaspoon: 1,
+  teaspoons: 1,
   tablepoon: 3,
   tablespoon: 3,
+  tablespoons: 3,
   cup: 48,
+  cups: 48,
   gallon: 768,
+  gallons: 768,
 };
 
 const COUNT_FACTORS = {
   pcs: 1,
+  pc: 1,
+  piece: 1,
+  pieces: 1,
+  pack: 1,
+  packs: 1,
+  bottle: 1,
+  bottles: 1,
 };
 
 function unitGroup(unit) {

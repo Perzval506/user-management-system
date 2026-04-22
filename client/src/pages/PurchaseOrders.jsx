@@ -369,7 +369,7 @@ export default function PurchaseOrders() {
       toast.push({
         type: "success",
         title: finalize ? "Purchase order finalized" : "Purchase order updated",
-        message: finalize ? "Inventory was posted from this purchase order." : "Purchase order draft updated.",
+        message: finalize ? "Inventory was posted from this purchase receipt." : "Purchase receipt draft updated.",
       });
       await openDetails(detailOrder.id);
       await loadOrders();
@@ -384,8 +384,8 @@ export default function PurchaseOrders() {
     <div className="page">
       <div className="pageHeader">
         <div>
-          <h2 className="pageTitle">Purchase Orders</h2>
-          <div className="pageSub">Record supplier receipts with quantities, unit prices, and item-level totals.</div>
+          <h2 className="pageTitle">Purchase Receipts</h2>
+          <div className="pageSub">Multi-item supplier receipts and inventory posting.</div>
         </div>
         <div className="badge mono">This week: {formatMoney(weeklyTotal)}</div>
       </div>
@@ -393,27 +393,13 @@ export default function PurchaseOrders() {
       <div className="card">
         {/* UX cleanup: one form and one save action makes purchase-order entry less confusing. */}
         <form onSubmit={onSubmit}>
-          <div
-            style={{
-              marginBottom: 14,
-              padding: 12,
-              borderRadius: 12,
-              background: "var(--surface2)",
-              border: "1px solid var(--border)",
-              color: "var(--muted)",
-              lineHeight: 1.5,
-            }}
-          >
-            Use this screen for receipts with several line items. If you only bought one ingredient quickly, use the Purchases screen instead.
-          </div>
-
           <div className="formGrid">
             <div>
-              <label>Store Name</label>
+              <label>Supplier or store</label>
               <input className="input" value={storeName} onChange={(event) => setStoreName(event.target.value)} placeholder="e.g., Sari-sari ni Aling Nena" />
             </div>
             <div>
-              <label>Purchase Date</label>
+              <label>Purchase date</label>
               <input className="input" type="date" value={purchaseDate} onChange={(event) => setPurchaseDate(event.target.value)} />
               <div style={{ color: "#6B7280", marginTop: 4 }}>{formatDateLong(purchaseDate)}</div>
             </div>
@@ -422,7 +408,7 @@ export default function PurchaseOrders() {
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
             <div>
               <div style={{ fontWeight: 700 }}>Receipt items</div>
-              <div style={{ color: "#6B7280" }}>Type an ingredient name and click a suggested match, then review the auto-filled brand, unit, and recent unit price. Incomplete rows will not be saved.</div>
+              <div className="compactHint">Incomplete rows are skipped.</div>
             </div>
             <div className="badge mono">{itemCount} item{itemCount === 1 ? "" : "s"}</div>
           </div>
@@ -435,7 +421,7 @@ export default function PurchaseOrders() {
                   <th>Brand</th>
                   <th>Unit</th>
                   <th className="text-right">Quantity</th>
-                  <th className="text-right">Unit Price</th>
+                  <th className="text-right">Purchase cost / unit</th>
                   <th className="text-right">Subtotal</th>
                   <th></th>
                 </tr>
@@ -453,20 +439,20 @@ export default function PurchaseOrders() {
             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
               <strong>Total:</strong>
               <span className="mono">{formatMoney(totalAmount)}</span>
-              <button className="btn btn-primary" type="button" disabled={saving} onClick={submitPurchaseOrder}>{saving ? "Saving..." : "Save purchase order"}</button>
+              <button className="btn btn-primary" type="button" disabled={saving} onClick={submitPurchaseOrder}>{saving ? "Saving..." : "Save receipt"}</button>
             </div>
           </div>
         </form>
       </div>
 
       <div className="tableWrap" style={{ marginTop: 14 }}>
-        <div className="tableTopBar">Recent Purchase Orders</div>
+        <div className="tableTopBar">Recent Purchase Receipts</div>
         <div style={{ overflowX: "auto" }}>
           <table className="table">
             <thead>
               <tr>
-                <th>Store</th>
-                <th>Purchase Date</th>
+                <th>Supplier / store</th>
+                <th>Purchase date</th>
                 <th>Items</th>
                 <th className="text-right">Total</th>
                 <th>Recorded</th>
@@ -499,7 +485,7 @@ export default function PurchaseOrders() {
                 </tr>
               ))}
               {orders.length === 0 && (
-                <tr><td colSpan="6" style={{ padding: 12, opacity: 0.7 }}>No purchase orders yet.</td></tr>
+                <tr><td colSpan="6" style={{ padding: 12, opacity: 0.7 }}>No purchase receipts yet.</td></tr>
               )}
             </tbody>
           </table>
@@ -526,7 +512,7 @@ export default function PurchaseOrders() {
                 </tr>
               ))}
               {weeklyHistory.length === 0 && (
-                <tr><td colSpan="3" style={{ padding: 12, opacity: 0.7 }}>Weekly purchase-order history will appear here once records exist.</td></tr>
+                <tr><td colSpan="3" style={{ padding: 12, opacity: 0.7 }}>No weekly history yet.</td></tr>
               )}
             </tbody>
           </table>
@@ -534,11 +520,11 @@ export default function PurchaseOrders() {
       </div>
 
       {detailOpen && (
-        <div style={modalBackdrop} onClick={() => setDetailOpen(false)}>
-          <div style={modalWideCard} onClick={(event) => event.stopPropagation()}>
+        <div className="modalBackdrop" onClick={() => setDetailOpen(false)}>
+          <div className="modalCard modalCard-wide" onClick={(event) => event.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
               <div>
-                <h3 style={{ margin: 0 }}>Purchase Order Details</h3>
+                <h3 style={{ margin: 0 }}>Purchase Receipt Details</h3>
                 {detailOrder && (
                   <div style={{ color: "#6B7280" }}>
                     {detailOrder.store_name} | {formatDateLong(detailOrder.purchase_date)} | {formatMoney(detailOrder.total_amount)}
@@ -571,7 +557,7 @@ export default function PurchaseOrders() {
               <>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginTop: 12, marginBottom: 12 }}>
                   <DetailCell label="Store" value={detailOrder?.store_name || "-"} />
-                  <DetailCell label="Purchase Date" value={detailOrder?.purchase_date ? formatDateLong(detailOrder.purchase_date) : "-"} />
+                  <DetailCell label="Purchase date" value={detailOrder?.purchase_date ? formatDateLong(detailOrder.purchase_date) : "-"} />
                   <DetailCell label="Status" value={detailOrder?.inventory_posted_at ? "POSTED TO INVENTORY" : "DRAFT"} />
                   <DetailCell label="Total" value={formatMoney(detailOrder?.total_amount || 0)} />
                 </div>
@@ -580,11 +566,11 @@ export default function PurchaseOrders() {
                   <>
                     <div className="formGrid">
                       <div>
-                        <label>Store Name</label>
+                        <label>Supplier or store</label>
                         <input className="input" value={editStoreName} onChange={(event) => setEditStoreName(event.target.value)} />
                       </div>
                       <div>
-                        <label>Purchase Date</label>
+                        <label>Purchase date</label>
                         <input className="input" type="date" value={editPurchaseDate} onChange={(event) => setEditPurchaseDate(event.target.value)} />
                       </div>
                     </div>
@@ -596,7 +582,7 @@ export default function PurchaseOrders() {
                             <th>Brand</th>
                             <th>Unit</th>
                             <th className="text-right">Quantity</th>
-                            <th className="text-right">Unit Price</th>
+                            <th className="text-right">Purchase cost / unit</th>
                             <th className="text-right">Subtotal</th>
                             <th></th>
                           </tr>
@@ -611,9 +597,9 @@ export default function PurchaseOrders() {
                     <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
                       <button type="button" className="btn" onClick={() => setEditItems((current) => [...current, makeEditableItem()])}>Add item</button>
                       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                        <button type="button" className="btn btn-ghost" disabled={detailSaving} onClick={() => saveEditedOrder(false)}>Save Draft</button>
+                        <button type="button" className="btn btn-ghost" disabled={detailSaving} onClick={() => saveEditedOrder(false)}>Save draft</button>
                         <button type="button" className="btn btn-primary" disabled={detailSaving} onClick={() => saveEditedOrder(true)}>
-                          {detailSaving ? "Saving..." : "Finalize & Post Inventory"}
+                          {detailSaving ? "Saving..." : "Post to inventory"}
                         </button>
                       </div>
                     </div>
@@ -627,7 +613,7 @@ export default function PurchaseOrders() {
                           <th>Brand</th>
                           <th>Unit</th>
                           <th className="text-right">Quantity</th>
-                          <th className="text-right">Unit Price</th>
+                          <th className="text-right">Purchase cost / unit</th>
                           <th className="text-right">Subtotal</th>
                         </tr>
                       </thead>
@@ -657,8 +643,8 @@ export default function PurchaseOrders() {
 
       <ConfirmModal
         open={Boolean(deletingOrder)}
-        title="Delete purchase order?"
-        message={deletingOrder ? `Delete the purchase order from ${deletingOrder.store_name}?` : ""}
+        title="Delete purchase receipt?"
+        message={deletingOrder ? `Delete the purchase receipt from ${deletingOrder.store_name}?` : ""}
         confirmLabel="Delete Order"
         onCancel={() => setDeletingOrder(null)}
         onConfirm={confirmDeleteOrder}
@@ -667,28 +653,15 @@ export default function PurchaseOrders() {
   );
 }
 
-const modalBackdrop = {
-  position: "fixed",
-  inset: 0,
-  background: "rgba(15, 23, 42, 0.24)",
-  backdropFilter: "blur(3px) saturate(104%)",
-  WebkitBackdropFilter: "blur(3px) saturate(104%)",
-  display: "grid",
-  placeItems: "center",
-  padding: 16,
-  zIndex: 200000,
-  overflowY: "auto",
-};
+function DetailCell({ label, value }) {
+  return (
+    <div className="detailCell">
+      <div className="detailCellLabel">{label}</div>
+      <div className="detailCellValue">{value}</div>
+    </div>
+  );
+}
 
-const modalWideCard = {
-  width: "min(920px, 100%)",
-  background: "var(--surface)",
-  borderRadius: 14,
-  padding: 16,
-  boxShadow: "0 18px 60px rgba(0,0,0,0.35)",
-  maxHeight: "90vh",
-  overflowY: "auto",
-};
 const suggestionBox = {
   position: "absolute",
   left: 0,

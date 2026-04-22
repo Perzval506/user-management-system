@@ -94,6 +94,13 @@ const Icons = {
       <path d="M7 15V9M12 15V6M17 15v-3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
   ),
+  reports: (
+    <svg viewBox="0 0 24 24" fill="none">
+      <path d="M6 20V5a2 2 0 0 1 2-2h6.8L18 6.2V20l-3-1.5L12 20l-3-1.5L6 20Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <path d="M14.5 3.5V7h3.5" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <path d="M9 11h6M9 14.5h4.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  ),
   purchasing: (
     <svg viewBox="0 0 24 24" fill="none">
       <path d="M5 6h2l1.3 7.2A2 2 0 0 0 10.3 15h6.9a2 2 0 0 0 2-1.6L20 8H8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
@@ -320,6 +327,7 @@ export default function AppShell() {
   const user = safeUser();
   const role = user?.role || "UNKNOWN";
   const name = user?.full_name || user?.name || user?.fullName || user?.username || "User";
+  const profileDestination = role === "OWNER" ? "/admin/staff" : "/staff";
 
   const [openItems, setOpenItems] = useState(false);
   const [openPurchasingDrop, setOpenPurchasingDrop] = useState(false);
@@ -438,7 +446,7 @@ export default function AppShell() {
             </div>
             <div className="brandText">
               <div className="brandTitle">Boyd's Pizza House</div>
-              <div className="brandSub">User Management System</div>
+              <div className="brandSub">Restaurant Operations</div>
             </div>
           </div>
 
@@ -491,7 +499,7 @@ export default function AppShell() {
                       className="dropdownItem"
                       onClick={() => navigate("/admin/inventory/summary")}
                     >
-                      Inventory Summary
+                      Stock Summary
                     </button>
                   </div>
                 </div>
@@ -521,7 +529,7 @@ export default function AppShell() {
                       className="dropdownItem"
                       onClick={() => navigate("/admin/purchase-orders")}
                     >
-                      Purchase Orders
+                      Purchase Receipts
                     </button>
                   </div>
                 </div>
@@ -546,9 +554,9 @@ export default function AppShell() {
                   <span>Catering</span>
                 </NavLink>
 
-                <NavLink to="/audit" title="Audit Logs" data-nav-label="Audit Logs" className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}>
+                <NavLink to="/audit" title="Activity Log" data-nav-label="Activity Log" className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}>
                   <span className="ico">{Icons.audit}</span>
-                  <span>Audit Logs</span>
+                  <span>Activity Log</span>
                 </NavLink>
 
                 <NavLink
@@ -559,6 +567,16 @@ export default function AppShell() {
                 >
                   <span className="ico">{Icons.sales}</span>
                   <span>Sales</span>
+                </NavLink>
+
+                <NavLink
+                  to="/admin/reports"
+                  title="Reports"
+                  data-nav-label="Reports"
+                  className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}
+                >
+                  <span className="ico">{Icons.reports}</span>
+                  <span>Reports</span>
                 </NavLink>
 
                 <NavLink
@@ -611,13 +629,24 @@ export default function AppShell() {
 
             <TopbarNotifications />
 
-            <div className="profile">
+            <button
+              type="button"
+              className="profile profileButton"
+              onClick={() =>
+                navigate(
+                  profileDestination,
+                  role === "OWNER" ? { state: { openSelfProfile: true, source: "topbar-profile" } } : undefined
+                )
+              }
+              aria-label="Open my profile"
+              title="Open my profile"
+            >
               <div className="avatar">{initials(name)}</div>
               <div>
                 <div className="profileName">{name}</div>
                 <div className="profileRole">{role}</div>
               </div>
-            </div>
+            </button>
           </header>
 
           <main className="content">

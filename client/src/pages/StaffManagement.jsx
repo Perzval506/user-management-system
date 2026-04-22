@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "../services/api";
 import { formatDateLong } from "../utils/formatters";
 
@@ -121,6 +122,8 @@ function StaffAvatar({ src, name }) {
 }
 
 export default function StaffManagement() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const me = safeCurrentUser();
   const createAvatarInputRef = useRef(null);
   const profileAvatarInputRef = useRef(null);
@@ -182,6 +185,38 @@ export default function StaffManagement() {
     loadUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!location.state?.openSelfProfile || !me?.id || profileOpen) return;
+
+    setFlash(null);
+    resetAccountForm();
+    setView("LIST");
+    setEditing({ ...me });
+    setEditPassword("");
+    setManageTab("profile");
+    setProfileMode("edit");
+    setProfileUserId(me.id);
+    setProfileData(
+      normalizeProfileData(
+        {
+          full_name: me.full_name || me.name || "",
+          avatar_url: me.avatar_url || "",
+          email: me.email || "",
+        },
+        createEmptyProfileData()
+      )
+    );
+    setProfileLoading(true);
+    setProfileOpen(true);
+
+    const requestId = Date.now() + Math.random();
+    latestProfileRequestRef.current = requestId;
+    loadProfile(me.id, requestId);
+    requestAnimationFrame(() => profileNameInputRef.current?.focus());
+    navigate(location.pathname, { replace: true, state: {} });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state, me, profileOpen, navigate, location.pathname]);
 
   function resetAccountForm() {
     setEditing(null);
@@ -448,7 +483,7 @@ export default function StaffManagement() {
       <div className="pageHeader">
         <div>
           <h2 className="pageTitle">My Staff</h2>
-          <div className="pageSub">Create staff accounts, manage access, and keep employee profiles up to date.</div>
+          <div className="pageSub">Staff accounts, access, and profiles.</div>
           {flash?.text && (
             <div className={`inlineStatus ${flash.type === "error" ? "error" : "success"}`}>
               {flash.text}
@@ -484,9 +519,9 @@ export default function StaffManagement() {
               <div className="dashboardMetricValue">{inactiveCount}</div>
             </div>
             <div className="card dashboardMetricCard">
-              <div className="dashboardMetricLabel">How this works</div>
+              <div className="dashboardMetricLabel">Visibility</div>
               <div className="dashboardMetricHint">
-                Active staff stay visible by default. Turn on inactive users only when you need to review or reactivate them.
+                Active staff show by default.
               </div>
             </div>
           </div>
@@ -558,7 +593,7 @@ export default function StaffManagement() {
 
       {view === "CREATE" && (
         <div className="card staffCreateCard">
-          <h3 className="modalTitle">Create User</h3>
+          <h3 className="modalTitle">Create Staff Account</h3>
 
           <form onSubmit={createUser} className="formGrid staffCreateForm">
             <div className="formRow2">
@@ -681,9 +716,6 @@ export default function StaffManagement() {
               <div className="modalHead">
                 <div>
                   <h3 className="modalTitle">Manage Staff</h3>
-                  <div className="mutedHint">
-                    Review profile details or update account access in one place.
-                  </div>
                 </div>
               </div>
 
@@ -779,7 +811,7 @@ export default function StaffManagement() {
                                 {profileAvatarUploading ? "Uploading..." : profileData?.avatar_url ? "Replace Photo" : "Choose Photo"}
                               </button>
                               <div className="staffHintText">
-                                {profileAvatarUploading ? "Uploading avatar..." : "Optional. Upload a photo now or leave it unchanged."}
+                                {profileAvatarUploading ? "Uploading avatar..." : "Optional photo."}
                               </div>
                               {profileData?.avatar_url && (
                                 <button type="button" className="btn btn-ghost" onClick={clearProfileAvatar}>

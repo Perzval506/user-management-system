@@ -11,7 +11,6 @@ function defaultItem() {
     menuItemId: "",
     itemName: "",
     quantity: "1.00",
-    unitPrice: "0.00",
     notes: "",
   };
 }
@@ -33,6 +32,13 @@ function itemReducer(state, action) {
 
 const STATUSES = ["DRAFT", "QUOTED", "CONFIRMED", "IN_PROGRESS", "COMPLETED", "CANCELLED"];
 
+function formatEventTimeRange(order = {}) {
+  const start = order.event_start_time || order.eventTime || order.event_time || "";
+  const end = order.event_end_time || "";
+  if (start && end) return `${start} - ${end}`;
+  return start || end || "-";
+}
+
 export default function CateringOrders() {
   const navigate = useNavigate();
   const toast = useToast();
@@ -50,21 +56,23 @@ export default function CateringOrders() {
     customerName: "",
     contactNumber: "",
     eventDate: "",
-    eventTime: "",
+    eventStartTime: "",
+    eventEndTime: "",
     venue: "",
     paxCount: "50",
+    quotePricePerPax: "0.00",
     discountAmount: "0.00",
     depositAmount: "0.00",
     notes: "",
   });
 
   const computed = useMemo(() => {
-    const subtotal = items.reduce((sum, item) => {
-      const qty = Number(item.quantity);
-      const unitPrice = Number(item.unitPrice);
-      if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(unitPrice) || unitPrice < 0) return sum;
-      return sum + qty * unitPrice;
-    }, 0);
+    const pax = Number(form.paxCount);
+    const quotePricePerPax = Number(form.quotePricePerPax);
+    const subtotal =
+      Number.isFinite(pax) && pax > 0 && Number.isFinite(quotePricePerPax) && quotePricePerPax >= 0
+        ? pax * quotePricePerPax
+        : 0;
     const discount = Number(form.discountAmount);
     const deposit = Number(form.depositAmount);
     const total = Math.max(subtotal - (Number.isFinite(discount) ? discount : 0), 0);
@@ -74,7 +82,7 @@ export default function CateringOrders() {
       total,
       balance: total - safeDeposit,
     };
-  }, [form.depositAmount, form.discountAmount, items]);
+  }, [form.depositAmount, form.discountAmount, form.paxCount, form.quotePricePerPax]);
 
   function closeDetails() {
     setDetail({ open: false, loading: false, order: null, items: [] });
@@ -116,7 +124,7 @@ export default function CateringOrders() {
 
   async function submitOrder(event) {
     event?.preventDefault();
-    const relevantItems = items.filter((item) => item.menuItemId || item.itemName || item.quantity || item.unitPrice);
+    const relevantItems = items.filter((item) => item.menuItemId || item.itemName || item.quantity);
     if (!form.customerName.trim()) {
       return toast.push({ type: "error", title: "Missing customer", message: "Customer name is required." });
     }
@@ -125,6 +133,9 @@ export default function CateringOrders() {
     }
     if (!Number.isFinite(Number(form.paxCount)) || Number(form.paxCount) <= 0) {
       return toast.push({ type: "error", title: "Invalid pax", message: "Pax count must be greater than 0." });
+    }
+    if (!Number.isFinite(Number(form.quotePricePerPax)) || Number(form.quotePricePerPax) < 0) {
+      return toast.push({ type: "error", title: "Invalid quote", message: "Price per guest must be 0 or greater." });
     }
     if (!relevantItems.length) {
       return toast.push({ type: "error", title: "Missing items", message: "Add at least one catering item." });
@@ -138,9 +149,6 @@ export default function CateringOrders() {
       if (!Number.isFinite(Number(item.quantity)) || Number(item.quantity) <= 0) {
         return toast.push({ type: "error", title: "Invalid quantity", message: `Line ${index + 1} needs a quantity greater than 0.` });
       }
-      if (!Number.isFinite(Number(item.unitPrice)) || Number(item.unitPrice) < 0) {
-        return toast.push({ type: "error", title: "Invalid price", message: `Line ${index + 1} needs a valid unit price.` });
-      }
     }
 
     setSaving(true);
@@ -149,9 +157,11 @@ export default function CateringOrders() {
         customerName: form.customerName.trim(),
         contactNumber: form.contactNumber.trim() || null,
         eventDate: form.eventDate,
-        eventTime: form.eventTime.trim() || null,
+        eventStartTime: form.eventStartTime.trim() || null,
+        eventEndTime: form.eventEndTime.trim() || null,
         venue: form.venue.trim() || null,
         paxCount: Number(form.paxCount),
+        quotePricePerPax: Number(form.quotePricePerPax || 0),
         discountAmount: Number(form.discountAmount || 0),
         depositAmount: Number(form.depositAmount || 0),
         notes: form.notes.trim() || null,
@@ -159,7 +169,6 @@ export default function CateringOrders() {
           menuItemId: item.menuItemId ? Number(item.menuItemId) : null,
           itemName: item.itemName.trim() || null,
           quantity: Number(item.quantity),
-          unitPrice: Number(item.unitPrice),
           notes: item.notes.trim() || null,
         })),
       });
@@ -168,9 +177,11 @@ export default function CateringOrders() {
         customerName: "",
         contactNumber: "",
         eventDate: "",
-        eventTime: "",
+        eventStartTime: "",
+        eventEndTime: "",
         venue: "",
         paxCount: "50",
+        quotePricePerPax: "0.00",
         discountAmount: "0.00",
         depositAmount: "0.00",
         notes: "",
@@ -262,7 +273,7 @@ export default function CateringOrders() {
       <div className="pageHeader">
         <div>
           <h2 className="pageTitle">Catering Orders</h2>
-          <div className="pageSub">Build custom event packages, capture deposits, and track the booking from quote to completion.</div>
+          <div className="pageSub">Event quotes, deposits, and booking status.</div>
         </div>
         <button type="button" className="btn btn-ghost" onClick={load}>Refresh</button>
       </div>
@@ -287,12 +298,28 @@ export default function CateringOrders() {
                 <input className="input" type="date" value={form.eventDate} onChange={(event) => setForm((current) => ({ ...current, eventDate: event.target.value }))} />
               </div>
               <div>
-                <label>Event time</label>
-                <input className="input" value={form.eventTime} onChange={(event) => setForm((current) => ({ ...current, eventTime: event.target.value }))} placeholder="e.g., 6:00 PM" />
+                <label>Start time</label>
+                <input className="input" type="time" value={form.eventStartTime} onChange={(event) => setForm((current) => ({ ...current, eventStartTime: event.target.value }))} />
               </div>
               <div>
-                <label>Pax count</label>
+                <label>End time</label>
+                <input className="input" type="time" value={form.eventEndTime} onChange={(event) => setForm((current) => ({ ...current, eventEndTime: event.target.value }))} />
+              </div>
+            </div>
+
+            <div className="formRow3">
+              <div>
+                <label>Number of guests</label>
                 <input className="input text-right" type="number" min="1" step="1" value={form.paxCount} onChange={(event) => setForm((current) => ({ ...current, paxCount: event.target.value }))} />
+              </div>
+              <div>
+                <label>Price per guest</label>
+                <div className="mutedHint">Used for customer total.</div>
+                <input className="input text-right" type="number" min="0.00" step="0.01" value={form.quotePricePerPax} onChange={(event) => setForm((current) => ({ ...current, quotePricePerPax: event.target.value }))} />
+              </div>
+              <div>
+                <label>Guest quote subtotal</label>
+                <input className="input text-right" value={formatMoney(computed.subtotal)} disabled />
               </div>
             </div>
 
@@ -302,7 +329,8 @@ export default function CateringOrders() {
             </div>
 
             <div className="tableWrap cateringItemsWrap">
-              <div className="tableTopBar">Package Items</div>
+              <div className="tableTopBar">Food and Service Items</div>
+              <div className="tableSectionNote">Planning only. Not added to customer total.</div>
               <div className="tableScroller">
                 <table className="table table-wide">
                   <thead>
@@ -310,15 +338,12 @@ export default function CateringOrders() {
                       <th>Menu item</th>
                       <th>Custom item</th>
                       <th className="text-right">Quantity</th>
-                      <th className="text-right">Unit price</th>
-                      <th className="text-right">Line total</th>
+                      <th>Notes</th>
                       <th></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {items.map((item) => {
-                      const lineTotal = Number(item.quantity || 0) * Number(item.unitPrice || 0);
-                      return (
+                    {items.map((item) => (
                         <tr key={item.key}>
                           <td>
                             <select
@@ -329,7 +354,6 @@ export default function CateringOrders() {
                                 updateItem(item.key, {
                                   menuItemId: event.target.value,
                                   itemName: selected ? "" : item.itemName,
-                                  unitPrice: selected ? String(Number(selected.selling_price || 0).toFixed(2)) : item.unitPrice,
                                 });
                               }}
                             >
@@ -351,16 +375,14 @@ export default function CateringOrders() {
                           <td className="text-right">
                             <input className="input text-right" type="number" min="0.01" step="0.01" value={item.quantity} onChange={(event) => updateItem(item.key, { quantity: event.target.value })} />
                           </td>
-                          <td className="text-right">
-                            <input className="input text-right" type="number" min="0.00" step="0.01" value={item.unitPrice} onChange={(event) => updateItem(item.key, { unitPrice: event.target.value })} />
+                          <td>
+                            <input className="input" value={item.notes} onChange={(event) => updateItem(item.key, { notes: event.target.value })} placeholder="Serving/setup note" />
                           </td>
-                          <td className="text-right mono">{formatMoney(lineTotal)}</td>
                           <td>
                             <button type="button" className="btn btn-ghost" onClick={() => removeItem(item.key)}>Remove</button>
                           </td>
                         </tr>
-                      );
-                    })}
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -422,6 +444,7 @@ export default function CateringOrders() {
                       </td>
                       <td>
                         <div>{formatDateLong(order.event_date)}</div>
+                        <div className="cateringInfoSub">{formatEventTimeRange(order)}</div>
                         <div className="cateringInfoSub">{order.venue || "-"}</div>
                       </td>
                       <td className="text-right mono">{formatNumber(order.pax_count || 0, 0)}</td>
@@ -455,12 +478,17 @@ export default function CateringOrders() {
                 <div className="formRow3">
                   <Info label="Customer" value={detail.order.customer_name} />
                   <Info label="Event date" value={formatDateLong(detail.order.event_date)} />
-                  <Info label="Pax" value={formatNumber(detail.order.pax_count || 0, 0)} />
+                  <Info label="Guests" value={formatNumber(detail.order.pax_count || 0, 0)} />
                 </div>
                 <div className="formRow3">
+                  <Info label="Event time" value={formatEventTimeRange(detail.order)} />
                   <Info label="Venue" value={detail.order.venue || "-"} />
+                  <Info label="Price per guest" value={formatMoney(detail.order.quote_price_per_pax || 0)} />
+                </div>
+                <div className="formRow3">
                   <Info label="Deposit" value={formatMoney(detail.order.deposit_amount || 0)} />
                   <Info label="Balance" value={formatMoney(detail.order.balance_amount || 0)} />
+                  <Info label="Total" value={formatMoney(detail.order.total_amount || 0)} />
                 </div>
                 <div className="tableWrap">
                   <div className="tableTopBar">Booked Items</div>
@@ -470,8 +498,7 @@ export default function CateringOrders() {
                         <tr>
                           <th>Item</th>
                           <th className="text-right">Qty</th>
-                          <th className="text-right">Unit price</th>
-                          <th className="text-right">Line total</th>
+                          <th>Notes</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -479,8 +506,7 @@ export default function CateringOrders() {
                           <tr key={item.id}>
                             <td>{item.menu_name || item.item_name_snapshot || "-"}</td>
                             <td className="text-right mono">{formatNumber(item.quantity || 0)}</td>
-                            <td className="text-right mono">{formatMoney(item.unit_price || 0)}</td>
-                            <td className="text-right mono">{formatMoney(item.line_total || 0)}</td>
+                            <td>{item.notes || "-"}</td>
                           </tr>
                         ))}
                       </tbody>

@@ -86,6 +86,11 @@ async function getSupplierQuoteItemColumns() {
   return getColumns("supplier_quote_items");
 }
 
+async function getSupplierQuoteColumns() {
+  if (!(await tableExists("supplier_quotes"))) return {};
+  return getColumns("supplier_quotes");
+}
+
 async function getIngredientById(ingredientId) {
   const [rows] = await pool.query(
     "SELECT id, ingredient_name, base_unit, quantity, status, updated_at, last_updated FROM ingredients WHERE id=?",
@@ -309,9 +314,12 @@ router.get("/:id/history", canReadIngredients, async (req, res) => {
       : apPriceCols.ap_unit_cost
         ? "iap.ap_unit_cost AS ap_cost_per_unit"
         : "0 AS ap_cost_per_unit";
+    const apSupplierSelect = apPriceCols.supplier_name ? "iap.supplier_name" : "NULL AS supplier_name";
+    const apUnitSelect = apPriceCols.unit ? "iap.unit" : "NULL AS unit";
+    const apNotesSelect = apPriceCols.notes ? "iap.notes" : "NULL AS notes";
     const [apPrices] = (await tableExists("ingredient_ap_prices"))
       ? await pool.query(
-          `SELECT iap.id, iap.supplier_name, iap.unit, ${apCostExpr}, iap.effective_date, iap.notes, iap.created_at
+          `SELECT iap.id, ${apSupplierSelect}, ${apUnitSelect}, ${apCostExpr}, iap.effective_date, ${apNotesSelect}, iap.created_at
              FROM ingredient_ap_prices iap
             WHERE iap.ingredient_id = ?
             ORDER BY iap.effective_date DESC, iap.id DESC`,
@@ -319,29 +327,60 @@ router.get("/:id/history", canReadIngredients, async (req, res) => {
         )
       : [[]];
 
-    const [quoteRows] = (await tableExists("supplier_quotes")) && (await tableExists("supplier_quote_items"))
-      ? await pool.query(
-          `SELECT sq.id,
-                  sq.supplier_name,
-                  sq.quote_date,
-                  sq.valid_until,
-                  sq.status,
-                  sq.notes,
-                  sq.created_at,
-                  sqi.id AS quote_item_id,
-                  sqi.brand,
-                  sqi.unit,
-                  sqi.quantity,
-                  sqi.quoted_price,
-                  sqi.notes AS item_notes
-             FROM supplier_quotes sq
-             JOIN supplier_quote_items sqi ON sqi.supplier_quote_id = sq.id
-            WHERE sqi.ingredient_id = ?
-               OR LOWER(TRIM(COALESCE(sqi.ingredient_name, ''))) = LOWER(TRIM(?))
-            ORDER BY sq.quote_date DESC, sq.id DESC, sqi.id DESC`,
-          [ingredientId, ingredient.ingredient_name]
-        )
-      : [[]];
+    let quoteRows = [];
+    if ((await tableExists("supplier_quotes")) && (await tableExists("supplier_quote_items"))) {
+      const quoteCols = await getSupplierQuoteColumns();
+      const quoteItemCols = await getSupplierQuoteItemColumns();
+      const quoteJoinColumn = quoteItemCols.supplier_quote_id
+        ? "sqi.supplier_quote_id"
+        : quoteItemCols.quote_id
+          ? "sqi.quote_id"
+          : null;
+      const quotedPriceExpr = quoteItemCols.quoted_price && quoteItemCols.quoted_unit_cost
+        ? "COALESCE(sqi.quoted_price, sqi.quoted_unit_cost) AS quoted_price"
+        : quoteItemCols.quoted_price
+          ? "sqi.quoted_price"
+          : quoteItemCols.quoted_unit_cost
+            ? "sqi.quoted_unit_cost AS quoted_price"
+            : "0 AS quoted_price";
+
+      if (quoteJoinColumn) {
+        const quoteWhere = [];
+        const quoteParams = [];
+        if (quoteItemCols.ingredient_id) {
+          quoteWhere.push("sqi.ingredient_id = ?");
+          quoteParams.push(ingredientId);
+        }
+        if (quoteItemCols.ingredient_name) {
+          quoteWhere.push("LOWER(TRIM(COALESCE(sqi.ingredient_name, ''))) = LOWER(TRIM(?))");
+          quoteParams.push(ingredient.ingredient_name);
+        }
+
+        if (quoteWhere.length > 0) {
+          const [rows] = await pool.query(
+            `SELECT sq.id,
+                    sq.supplier_name,
+                    sq.quote_date,
+                    ${quoteCols.valid_until ? "sq.valid_until" : "NULL AS valid_until"},
+                    ${quoteCols.status ? "sq.status" : "NULL AS status"},
+                    ${quoteCols.notes ? "sq.notes" : "NULL AS notes"},
+                    sq.created_at,
+                    sqi.id AS quote_item_id,
+                    ${quoteItemCols.brand ? "sqi.brand" : "NULL AS brand"},
+                    ${quoteItemCols.unit ? "sqi.unit" : "NULL AS unit"},
+                    ${quoteItemCols.quantity ? "sqi.quantity" : "NULL AS quantity"},
+                    ${quotedPriceExpr},
+                    ${quoteItemCols.notes ? "sqi.notes" : "NULL AS item_notes"}
+               FROM supplier_quotes sq
+               JOIN supplier_quote_items sqi ON ${quoteJoinColumn} = sq.id
+              WHERE ${quoteWhere.join(" OR ")}
+              ORDER BY sq.quote_date DESC, sq.id DESC, sqi.id DESC`,
+            quoteParams
+          );
+          quoteRows = rows;
+        }
+      }
+    }
 
     const history = [...purchaseRows, ...poRows].sort(
       (a, b) => new Date(b.activity_date).getTime() - new Date(a.activity_date).getTime()
@@ -623,11 +662,29 @@ router.post("/:id/supplier-quotes", canManageIngredients, async (req, res) => {
       return res.status(404).json({ message: "Ingredient not found." });
     }
 
+    const quoteCols = await getSupplierQuoteColumns();
+    const quoteFields = ["supplier_name", "quote_date"];
+    const quotePlaceholders = ["?", "?"];
+    const quoteValues = [supplierName, quoteDate];
+    if (quoteCols.valid_until) {
+      quoteFields.push("valid_until");
+      quotePlaceholders.push("?");
+      quoteValues.push(validUntil);
+    }
+    if (quoteCols.status) {
+      quoteFields.push("status");
+      quotePlaceholders.push("?");
+      quoteValues.push("RECEIVED");
+    }
+    if (quoteCols.notes) {
+      quoteFields.push("notes");
+      quotePlaceholders.push("?");
+      quoteValues.push(notes);
+    }
+
     const [quoteResult] = await conn.query(
-      `INSERT INTO supplier_quotes
-        (supplier_name, quote_date, valid_until, status, notes)
-       VALUES (?,?,?,?,?)`,
-      [supplierName, quoteDate, validUntil, "RECEIVED", notes]
+      `INSERT INTO supplier_quotes (${quoteFields.join(", ")}) VALUES (${quotePlaceholders.join(", ")})`,
+      quoteValues
     );
 
     const quoteItemCols = await getSupplierQuoteItemColumns();
@@ -760,7 +817,8 @@ router.post("/:id/supplier-quotes/:quoteId/use", canManageIngredients, async (re
     }
 
     const [rows] = await conn.query(
-      `SELECT sq.id, sq.supplier_name, sq.quote_date, sqi.id AS quote_item_id, sqi.unit,
+      `SELECT sq.id, sq.supplier_name, sq.quote_date, sqi.id AS quote_item_id,
+              ${quoteItemCols.unit ? "sqi.unit" : "NULL AS unit"},
               ${quotedPriceExpr} AS quoted_price
          FROM supplier_quotes sq
          JOIN supplier_quote_items sqi ON ${quoteJoinColumn} = sq.id

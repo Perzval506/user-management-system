@@ -335,7 +335,7 @@ export default function AdminIngredients() {
       return toast.push({ type: "error", title: "Missing unit", message: "Select a unit first." });
     }
     if (!Number.isFinite(apCostPerUnit) || apCostPerUnit < 0) {
-      return toast.push({ type: "error", title: "Invalid AP cost", message: "AP cost must be 0 or greater." });
+      return toast.push({ type: "error", title: "Invalid purchase cost", message: "Purchase cost must be 0 or greater." });
     }
     setHistorySaving(true);
     try {
@@ -346,7 +346,7 @@ export default function AdminIngredients() {
         apCostPerUnit,
         notes: apForm.notes,
       });
-      toast.push({ type: "success", title: "Saved", message: "AP price saved." });
+      toast.push({ type: "success", title: "Saved", message: "Purchase cost saved." });
       setApForm((current) => ({
         ...emptyApForm,
         effectiveDate: current.effectiveDate,
@@ -358,7 +358,7 @@ export default function AdminIngredients() {
       toast.push({
         type: "error",
         title: "Save failed",
-        message: error?.response?.data?.message || error.message || "Failed to save AP price",
+        message: error?.response?.data?.message || error.message || "Failed to save purchase cost",
       });
     } finally {
       setHistorySaving(false);
@@ -370,14 +370,14 @@ export default function AdminIngredients() {
     setHistorySaving(true);
     try {
       await api.post(`/ingredients/${historyData.ingredient.id}/ap-prices/${priceId}/rollback`);
-      toast.push({ type: "success", title: "Rollback complete", message: "AP cost was restored from the selected history row." });
+      toast.push({ type: "success", title: "Rollback complete", message: "Purchase cost was restored from the selected history row." });
       await loadHistory(historyData.ingredient.id, historyData.ingredient);
       await load();
     } catch (error) {
       toast.push({
         type: "error",
         title: "Rollback failed",
-        message: error?.response?.data?.message || error.message || "Failed to rollback AP price",
+        message: error?.response?.data?.message || error.message || "Failed to rollback purchase cost",
       });
     } finally {
       setHistorySaving(false);
@@ -436,7 +436,7 @@ export default function AdminIngredients() {
     setHistorySaving(true);
     try {
       await api.post(`/ingredients/${historyData.ingredient.id}/supplier-quotes/${quoteId}/use`);
-      toast.push({ type: "success", title: "Quote applied", message: "The selected supplier quote is now part of AP price history." });
+      toast.push({ type: "success", title: "Quote applied", message: "The selected supplier quote is now part of purchase cost history." });
       await loadHistory(historyData.ingredient.id, historyData.ingredient);
       await load();
     } catch (error) {
@@ -455,7 +455,7 @@ export default function AdminIngredients() {
       <div className="pageHeader">
         <div>
           <h2 className="pageTitle">Ingredient Management</h2>
-          <div className="pageSub">Set up ingredients, track on-hand stock, and keep recipe costing clean.</div>
+          <div className="pageSub">Ingredient setup, stock, and purchase costs.</div>
         </div>
 
         <div className="pageActions">
@@ -474,9 +474,9 @@ export default function AdminIngredients() {
           <div className="dashboardMetricValue">{inactiveCount}</div>
         </div>
         <div className="card dashboardMetricCard">
-          <div className="dashboardMetricLabel">How this works</div>
+          <div className="dashboardMetricLabel">Setup</div>
           <div className="dashboardMetricHint">
-            Create the ingredient once, define its base unit, then update stock as purchases come in.
+            Buying unit, stock, and latest cost.
           </div>
         </div>
       </div>
@@ -502,9 +502,9 @@ export default function AdminIngredients() {
                 <tr>
                   <th>Name</th>
                   <th>Category</th>
-                  <th>Base unit size</th>
+                  <th>Buying unit</th>
                   <th>Quantity</th>
-                  <th>Current AP Cost</th>
+                  <th>Latest purchase cost</th>
                   <th>Last updated</th>
                   <th>Status</th>
                   <th>Actions</th>
@@ -544,7 +544,7 @@ export default function AdminIngredients() {
                 {visibleItems.length === 0 && (
                   <tr>
                     <td colSpan="8" className="tableEmpty">
-                      No ingredients found. Create your first ingredient to start tracking stock and recipes.
+                      No ingredients found.
                     </td>
                   </tr>
                 )}
@@ -586,10 +586,8 @@ export default function AdminIngredients() {
               </div>
 
               <div>
-                <label>Base unit size</label>
-                <div className="mutedHint">
-                  Example: 1 kg, 1 pack, or 500 g. Recipes will use this as the ingredient&apos;s starting unit.
-                </div>
+                <label>Buying unit</label>
+                <div className="mutedHint">1 kg, 1 pack, 500 g, etc.</div>
                 <div className="formRow2">
                   <input name="base_unit_qty" value={form.base_unit_qty} onChange={onChange} className="input" type="number" step="0.01" min="0.01" placeholder="e.g., 1.00" />
                   <select name="base_unit" value={form.base_unit} onChange={onChange} className="input">
@@ -603,9 +601,7 @@ export default function AdminIngredients() {
 
               <div>
                 <label>On-hand quantity</label>
-                <div className="mutedHint">
-                  Current usable stock in the same base unit you defined above.
-                </div>
+                <div className="mutedHint">Current usable stock.</div>
                 <input name="quantity" value={form.quantity} onChange={onChange} className="input" type="number" step="0.01" min="0" placeholder="e.g., 5.00" />
               </div>
 
@@ -674,13 +670,13 @@ export default function AdminIngredients() {
               <div className="modalSection" style={{ display: "grid", gap: 16 }}>
                 <div className="dashboardStatGrid dashboardStatGridOwnerPrimary">
                   <div className="card dashboardMetricCard">
-                    <div className="dashboardMetricLabel">Current AP cost</div>
+                    <div className="dashboardMetricLabel">Latest purchase cost</div>
                     <div className="dashboardMetricValue">
                       {historyData.current_ap_cost != null ? formatMoney(historyData.current_ap_cost) : "-"}
                     </div>
                   </div>
                   <div className="card dashboardMetricCard">
-                    <div className="dashboardMetricLabel">AP price history</div>
+                    <div className="dashboardMetricLabel">Purchase cost history</div>
                     <div className="dashboardMetricValue">{historyData.ap_prices?.length || 0}</div>
                   </div>
                   <div className="card dashboardMetricCard">
@@ -691,7 +687,7 @@ export default function AdminIngredients() {
 
                 <div className="formRow2" style={{ alignItems: "start" }}>
                   <div className="card" style={{ padding: 16 }}>
-                    <div className="tableTopBar">AP Cost Management</div>
+                    <div className="tableTopBar">Purchase Cost Management</div>
                     <div className="formGrid">
                       <div className="formRow2">
                         <div>
@@ -728,7 +724,7 @@ export default function AdminIngredients() {
                           </select>
                         </div>
                         <div>
-                          <label>AP cost per unit</label>
+                          <label>Purchase cost per unit</label>
                           <input
                             className="input"
                             type="number"
@@ -751,7 +747,7 @@ export default function AdminIngredients() {
                       </div>
                       <div className="formActions">
                         <button type="button" className="btn btn-primary" onClick={submitApPrice} disabled={historySaving}>
-                          Save AP Price
+                          Save Purchase Cost
                         </button>
                       </div>
                     </div>
@@ -875,7 +871,7 @@ export default function AdminIngredients() {
                       {historyData.history.map((entry) => (
                         <tr key={`${entry.source_type}-${entry.id}`}>
                           <td>{formatDateLong(entry.activity_date)}</td>
-                          <td>{entry.source_type === "PURCHASE_ORDER" ? "Purchase Order" : "Purchase"}</td>
+                          <td>{entry.source_type === "PURCHASE_ORDER" ? "Purchase Receipt" : "Quick Purchase"}</td>
                           <td>{entry.brand || "-"}</td>
                           <td>{entry.unit || historyData.ingredient?.base_unit || "-"}</td>
                           <td className="text-right mono">{formatNumber(entry.quantity || 0)}</td>
@@ -898,6 +894,7 @@ export default function AdminIngredients() {
                         <th>Date</th>
                         <th>Source</th>
                         <th>Supplier</th>
+                        <th>Unit</th>
                         <th>Previous Cost</th>
                         <th>New Cost</th>
                         <th>Actions</th>
@@ -909,8 +906,9 @@ export default function AdminIngredients() {
                         return (
                           <tr key={`ap-${entry.id}`}>
                             <td>{formatDateLong(entry.effective_date || entry.created_at)}</td>
-                            <td>AP PRICE</td>
+                            <td>Purchase cost</td>
                             <td>{entry.supplier_name || "-"}</td>
+                            <td>{entry.unit || historyData.ingredient?.base_unit || "-"}</td>
                             <td className="text-right mono">{previous ? formatMoney(previous.ap_cost_per_unit) : "-"}</td>
                             <td className="text-right mono">{formatMoney(entry.ap_cost_per_unit)}</td>
                             <td>
@@ -925,7 +923,7 @@ export default function AdminIngredients() {
                       })}
                       {historyData.ap_prices.length === 0 && (
                         <tr>
-                          <td colSpan="6" className="tableEmpty">No AP price history recorded yet.</td>
+                          <td colSpan="7" className="tableEmpty">No purchase cost history recorded yet.</td>
                         </tr>
                       )}
                     </tbody>

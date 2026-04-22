@@ -6,6 +6,7 @@ import { formatDateTimeFriendly, formatMoney, formatNumber } from "../utils/form
 import { normalizeInventoryCategory } from "../utils/inventoryCategories";
 
 const LOW_STOCK_THRESHOLD = 5;
+const DASHBOARD_LIST_LIMIT = 5;
 
 function DashboardList({ title, emptyText, items, renderItem, actionLabel, onAction }) {
   return (
@@ -32,9 +33,13 @@ function DashboardList({ title, emptyText, items, renderItem, actionLabel, onAct
 
 function MetricCard({ label, value, hint, tone = "neutral", onClick }) {
   const className = `card dashboardMetricCard dashboardMetricCard-${tone} ${onClick ? "dashboardMetricClickable" : ""}`;
+  const toneLabel = tone === "danger" ? "Urgent" : tone === "warning" ? "Review" : tone === "success" ? "Good" : "Info";
   const content = (
     <>
-      <div className="dashboardMetricLabel">{label}</div>
+      <div className="dashboardMetricHead">
+        <div className="dashboardMetricLabel">{label}</div>
+        <span className={`dashboardMetricTone dashboardMetricTone-${tone}`}>{toneLabel}</span>
+      </div>
       <div className="dashboardMetricValue">{value}</div>
       {hint ? <div className="dashboardMetricHint">{hint}</div> : null}
     </>
@@ -49,6 +54,43 @@ function MetricCard({ label, value, hint, tone = "neutral", onClick }) {
   }
 
   return <div className={className}>{content}</div>;
+}
+
+function ActionTile({ label, detail, count, tone = "neutral", onClick }) {
+  return (
+    <button type="button" className={`actionTile actionTile-${tone}`} onClick={onClick}>
+      <span className="actionTileCount">{count}</span>
+      <span className="actionTileBody">
+        <span className="actionTileLabel">{label}</span>
+        <span className="actionTileDetail">{detail}</span>
+      </span>
+    </button>
+  );
+}
+
+function OverviewStat({ label, value, hint }) {
+  return (
+    <div className="overviewStat">
+      <div className="overviewStatLabel">{label}</div>
+      <div className="overviewStatValue">{value}</div>
+      {hint ? <div className="overviewStatHint">{hint}</div> : null}
+    </div>
+  );
+}
+
+function OverviewBar({ label, value, displayValue, max, tone = "neutral" }) {
+  const width = max > 0 ? Math.max((Number(value || 0) / max) * 100, Number(value || 0) > 0 ? 4 : 0) : 0;
+  return (
+    <div className="overviewBarRow">
+      <div className="overviewBarMeta">
+        <span>{label}</span>
+        <span className="mono">{displayValue}</span>
+      </div>
+      <div className="overviewBarTrack">
+        <div className={`overviewBarFill overviewBarFill-${tone}`} style={{ width: `${width}%` }} />
+      </div>
+    </div>
+  );
 }
 
 export default function OwnerDashboard() {
@@ -182,24 +224,24 @@ export default function OwnerDashboard() {
   const lowStockInventory = useMemo(
     () =>
       dashboard.inventory
-        .filter((item) => Number(item.total_stock || 0) > 0 && Number(item.total_stock || 0) <= LOW_STOCK_THRESHOLD)
+        .filter((item) => item.status !== "INACTIVE" && Number(item.total_stock || 0) > 0 && Number(item.total_stock || 0) <= LOW_STOCK_THRESHOLD)
         .sort((a, b) => Number(a.total_stock || 0) - Number(b.total_stock || 0)),
     [dashboard.inventory]
   );
   const inventoryAlerts = useMemo(
     () =>
       dashboard.inventory
-        .filter((item) => Number(item.total_stock || 0) <= LOW_STOCK_THRESHOLD)
+        .filter((item) => item.status !== "INACTIVE" && Number(item.total_stock || 0) <= LOW_STOCK_THRESHOLD)
         .sort((a, b) => Number(a.total_stock || 0) - Number(b.total_stock || 0))
-        .slice(0, 8),
+        .slice(0, DASHBOARD_LIST_LIMIT),
     [dashboard.inventory]
   );
   const outOfStockCount = useMemo(
-    () => dashboard.inventory.filter((item) => Number(item.total_stock || 0) <= 0).length,
+    () => dashboard.inventory.filter((item) => item.status !== "INACTIVE" && Number(item.total_stock || 0) <= 0).length,
     [dashboard.inventory]
   );
   const menuWithoutRecipe = useMemo(
-    () => dashboard.menu.filter((item) => !item.recipe_version_id || !item.has_recipe_lines).slice(0, 5),
+    () => dashboard.menu.filter((item) => !item.recipe_version_id || !item.has_recipe_lines).slice(0, DASHBOARD_LIST_LIMIT),
     [dashboard.menu]
   );
   const weeklyPurchasingTotal = useMemo(
@@ -207,16 +249,227 @@ export default function OwnerDashboard() {
     [dashboard.purchaseOrderWeeklyTotal, dashboard.purchaseWeeklyTotal]
   );
   const weeklyBuyRecommendations = useMemo(
-    () => (dashboard.weeklyInventoryReview?.recommendations || []).filter((item) => item.needs_attention).slice(0, 6),
+    () => (dashboard.weeklyInventoryReview?.recommendations || []).filter((item) => item.needs_attention).slice(0, DASHBOARD_LIST_LIMIT),
     [dashboard.weeklyInventoryReview]
   );
+  const actionItems = useMemo(
+    () => [
+      {
+        label: "Restock urgent items",
+        detail: `${formatNumber(outOfStockCount, 0)} out, ${formatNumber(lowStockInventory.length, 0)} low`,
+        count: formatNumber(inventoryAlerts.length, 0),
+        tone: inventoryAlerts.length > 0 ? "danger" : "success",
+        onClick: () => navigate("/admin/inventory/summary"),
+      },
+      {
+        label: "Approve purchase requests",
+        detail: "Requests waiting for owner review",
+        count: formatNumber(dashboard.reportSummary.pending_purchase_count, 0),
+        tone: dashboard.reportSummary.pending_purchase_count > 0 ? "warning" : "success",
+        onClick: () => navigate("/admin/purchase-requests"),
+      },
+      {
+        label: "Fix menu costing",
+        detail: "Loss or low-profit items",
+        count: formatNumber(dashboard.reportSummary.costing_alert_count, 0),
+        tone: dashboard.reportSummary.costing_alert_count > 0 ? "warning" : "success",
+        onClick: () => navigate("/admin/reports"),
+      },
+      {
+        label: "Finish recipe setup",
+        detail: "Menu items missing usable recipes",
+        count: formatNumber(menuWithoutRecipe.length, 0),
+        tone: menuWithoutRecipe.length > 0 ? "warning" : "success",
+        onClick: () => navigate("/admin/menu/manage"),
+      },
+    ],
+    [
+      dashboard.reportSummary.costing_alert_count,
+      dashboard.reportSummary.pending_purchase_count,
+      inventoryAlerts.length,
+      lowStockInventory.length,
+      menuWithoutRecipe.length,
+      navigate,
+      outOfStockCount,
+    ]
+  );
+  const overviewMetrics = useMemo(
+    () => [
+      {
+        label: "Monthly net sales",
+        value: Number(dashboard.reportSummary.monthly_sales || 0),
+        displayValue: formatMoney(dashboard.reportSummary.monthly_sales || 0),
+        tone: "sales",
+      },
+      {
+        label: "Inventory value",
+        value: Number(dashboard.reportSummary.total_inventory_value || 0),
+        displayValue: formatMoney(dashboard.reportSummary.total_inventory_value || 0),
+        tone: "stock",
+      },
+      {
+        label: "Weekly purchasing",
+        value: Number(weeklyPurchasingTotal || 0),
+        displayValue: formatMoney(weeklyPurchasingTotal),
+        tone: "purchase",
+      },
+      {
+        label: "Estimated gross profit",
+        value: Number(dashboard.reportSummary.estimated_gross_profit || 0),
+        displayValue: formatMoney(dashboard.reportSummary.estimated_gross_profit || 0),
+        tone: "profit",
+      },
+    ],
+    [
+      dashboard.reportSummary.estimated_gross_profit,
+      dashboard.reportSummary.monthly_sales,
+      dashboard.reportSummary.total_inventory_value,
+      weeklyPurchasingTotal,
+    ]
+  );
+  const overviewMetricMax = useMemo(
+    () => Math.max(...overviewMetrics.map((metric) => Math.abs(Number(metric.value || 0))), 1),
+    [overviewMetrics]
+  );
+  const attentionCount =
+    inventoryAlerts.length +
+    Number(dashboard.reportSummary.pending_purchase_count || 0) +
+    Number(dashboard.reportSummary.costing_alert_count || 0) +
+    menuWithoutRecipe.length;
+  const leftColumnCards = [
+    {
+      key: "weekly-buying",
+      title: "Weekly Buying Plan",
+      emptyText: "No urgent weekly buys suggested.",
+      actionLabel: "Open Stock Summary",
+      onAction: () => navigate("/admin/inventory/summary"),
+      items: weeklyBuyRecommendations,
+      renderItem: (item) => (
+        <div key={item.id} className="dashboardListRow">
+          <div className="dashboardListMeta">
+            <div className="dashboardListName">{item.ingredient_name}</div>
+            <div className="dashboardListHint">
+              {normalizeInventoryCategory(item.category)} | Used {formatNumber(item.weekly_used)} {item.base_unit}
+            </div>
+          </div>
+          <div className="dashboardListAside">
+            <span className="badge badge-pending">Buy next</span>
+            <div className="mono dashboardListValue">
+              {formatNumber(item.recommended_buy_qty)} {item.base_unit}
+            </div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: "inventory-alerts",
+      title: "Inventory Alerts",
+      emptyText: "Stock levels look healthy right now.",
+      actionLabel: "Open Stock",
+      onAction: () => navigate("/admin/inventory/summary"),
+      items: inventoryAlerts,
+      renderItem: (item) => (
+        <div key={item.id} className="dashboardListRow">
+          <div className="dashboardListMeta">
+            <div className="dashboardListName">{item.ingredient_name}</div>
+            <div className="dashboardListHint">
+              {item.base_unit || "-"} | {Number(item.total_stock || 0) <= 0 ? "Restock now" : `Low stock (${LOW_STOCK_THRESHOLD} or below)`}
+            </div>
+          </div>
+          <div className="dashboardListAside">
+            <span className={Number(item.total_stock || 0) <= 0 ? "badge badge-inactive" : "badge badge-pending"}>
+              {Number(item.total_stock || 0) <= 0 ? "Out" : "Low"}
+            </span>
+            <div className="mono dashboardListValue">
+              {formatNumber(item.total_stock)}
+            </div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: "recipe-watchlist",
+      title: "Recipe Setup Watchlist",
+      emptyText: "Every menu item already has a recipe linked.",
+      actionLabel: "Open Menu",
+      onAction: () => navigate("/admin/menu/manage"),
+      items: menuWithoutRecipe,
+      renderItem: (item) => (
+        <div key={item.id} className="dashboardListRow">
+          <div className="dashboardListMeta">
+            <div className="dashboardListName">{item.menu_name}</div>
+            <div className="dashboardListHint">
+              {!item.recipe_version_id ? "No recipe linked yet" : "Recipe linked but still missing ingredient lines"}
+            </div>
+          </div>
+          <span className="badge badge-inactive">Needs setup</span>
+        </div>
+      ),
+    },
+  ];
+  const rightColumnCards = [
+    {
+      key: "profitable-items",
+      title: "Most Profitable Items",
+      emptyText: "No profitability data yet.",
+      actionLabel: "Open Reports",
+      onAction: () => navigate("/admin/reports"),
+      items: (dashboard.mostProfitableItems || []).slice(0, DASHBOARD_LIST_LIMIT),
+      renderItem: (item) => (
+        <div key={item.id} className="dashboardListRow">
+          <div className="dashboardListMeta">
+            <div className="dashboardListName">{item.menu_name}</div>
+            <div className="dashboardListHint">Healthy margin item</div>
+          </div>
+          <div className="mono dashboardListValue">{formatMoney(item.profit_per_portion || 0)}</div>
+        </div>
+      ),
+    },
+    {
+      key: "costing-alerts",
+      title: "Costing Alerts",
+      emptyText: "No menu items are currently flagged as loss or low profit.",
+      actionLabel: "Open Reports",
+      onAction: () => navigate("/admin/reports"),
+      items: (dashboard.costingAlerts || []).slice(0, DASHBOARD_LIST_LIMIT),
+      renderItem: (item) => (
+        <div key={item.id} className="dashboardListRow">
+          <div className="dashboardListMeta">
+            <div className="dashboardListName">{item.menu_name}</div>
+            <div className="dashboardListHint">{item.status}</div>
+          </div>
+          <div className="mono dashboardListValue">
+            {item.suggested_price != null ? formatMoney(item.suggested_price) : "-"}
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: "recent-activity",
+      title: "Recent Activity",
+      emptyText: "No recent activity yet.",
+      actionLabel: "Open Activity Log",
+      onAction: () => navigate("/audit"),
+      items: (dashboard.recentActivities || []).slice(0, DASHBOARD_LIST_LIMIT),
+      renderItem: (item) => (
+        <div key={item.id} className="dashboardListRow dashboardListRowCompact">
+          <div className="dashboardListMeta">
+            <div className="dashboardListName">{item.summary || `${item.module_name} ${item.action_name}`}</div>
+            <div className="dashboardListHint">
+              {(item.actor_name || "System")} | {formatDateTimeFriendly(item.created_at)}
+            </div>
+          </div>
+        </div>
+      ),
+    },
+  ];
 
   return (
     <div className="page">
       <div className="pageHeader">
         <div>
           <h2 className="pageTitle">Dashboard</h2>
-          <div className="pageSub">Today&apos;s operating snapshot for stock, costing, purchasing, and sales.</div>
+          <div className="pageSub">A clean operating view for sales, stock, purchasing, and menu health.</div>
         </div>
         <div className="pageActions">
           <button className="btn btn-ghost" onClick={load}>
@@ -225,204 +478,99 @@ export default function OwnerDashboard() {
         </div>
       </div>
 
-      <div className="dashboardHero">
-        <div>
-          <div className="dashboardHeroEyebrow">Owner Command Center</div>
-          <h3 className="dashboardHeroTitle">Focus on what needs action first.</h3>
-          <p className="dashboardHeroText">
-            The dashboard highlights urgent stock, purchase, costing, and sales signals. Detailed records stay in their own modules.
-          </p>
-        </div>
-        <div className="dashboardHeroActions">
-          <button type="button" className="btn btn-primary" onClick={() => navigate("/admin/purchase-requests")}>Review Requests</button>
-          <button type="button" className="btn" onClick={() => navigate("/admin/reports")}>Open Reports</button>
-        </div>
+      <div className="overviewBoard">
+        <section className="overviewMainCard">
+          <div className="overviewMainHead">
+            <div>
+              <div className="sectionEyebrow">Restaurant overview</div>
+              <h3 className="overviewMainTitle">Today&apos;s operating picture</h3>
+            </div>
+            <div className={`overviewHealthPill ${attentionCount > 0 ? "needsAttention" : "healthy"}`}>
+              {attentionCount > 0 ? `${formatNumber(attentionCount, 0)} needs attention` : "All clear"}
+            </div>
+          </div>
+
+          <div className="overviewStatGrid">
+            <OverviewStat
+              label="Today&apos;s sales"
+              value={formatMoney(dashboard.salesSummary.todayRevenue || 0)}
+              hint={`${formatNumber(dashboard.salesSummary.totalTransactions || 0, 0)} completed sale(s) overall`}
+            />
+            <OverviewStat
+              label="Monthly net sales"
+              value={formatMoney(dashboard.reportSummary.monthly_sales || 0)}
+              hint={`${formatNumber(dashboard.reportSummary.estimated_food_cost_percent || 0)}% estimated ingredient cost`}
+            />
+            <OverviewStat
+              label="Inventory value"
+              value={formatMoney(dashboard.reportSummary.total_inventory_value || 0)}
+              hint={`${formatNumber(outOfStockCount, 0)} out, ${formatNumber(lowStockInventory.length, 0)} low`}
+            />
+          </div>
+
+          <div className="overviewBars">
+            {overviewMetrics.map((metric) => (
+              <OverviewBar key={metric.label} max={overviewMetricMax} {...metric} />
+            ))}
+          </div>
+        </section>
+
+        <aside className="overviewActionCard">
+          <div className="overviewActionHead">
+            <div>
+              <div className="sectionEyebrow">Next actions</div>
+              <div className="overviewActionTitle">Start here</div>
+            </div>
+            <button type="button" className="btn btn-ghost" onClick={() => navigate("/admin/reports")}>Reports</button>
+          </div>
+          <div className="overviewActionList">
+            {actionItems.map((item) => (
+              <ActionTile key={item.label} {...item} />
+            ))}
+          </div>
+        </aside>
       </div>
 
-      <div className="dashboardStatGrid dashboardStatGridOwnerPrimary">
+      <div className="dashboardQuickStats">
         <MetricCard
-          label="Today&apos;s sales"
-          value={formatMoney(dashboard.salesSummary.todayRevenue || 0)}
-          hint="Open Sales for full gross/net breakdown."
-          tone="success"
-          onClick={() => navigate("/admin/sales")}
-        />
-        <MetricCard
-          label="Stock alerts"
-          value={formatNumber(inventoryAlerts.length, 0)}
-          hint={`${formatNumber(outOfStockCount, 0)} out of stock, ${formatNumber(lowStockInventory.length, 0)} low.`}
-          tone={inventoryAlerts.length > 0 ? "danger" : "success"}
-          onClick={() => navigate("/admin/inventory/summary")}
+          label="Weekly purchasing"
+          value={formatMoney(weeklyPurchasingTotal)}
+          hint="Quick purchases plus purchase receipts."
+          onClick={() => navigate("/admin/purchases")}
         />
         <MetricCard
           label="Pending requests"
           value={formatNumber(dashboard.reportSummary.pending_purchase_count, 0)}
-          hint="Stockroom requests waiting for owner review."
-          tone={dashboard.reportSummary.pending_purchase_count > 0 ? "warning" : "neutral"}
+          hint="Waiting for owner review."
+          tone={dashboard.reportSummary.pending_purchase_count > 0 ? "warning" : "success"}
           onClick={() => navigate("/admin/purchase-requests")}
-        />
-        <MetricCard
-          label="Costing alerts"
-          value={formatNumber(dashboard.reportSummary.costing_alert_count, 0)}
-          hint="Loss or low-profit menu items."
-          tone={dashboard.reportSummary.costing_alert_count > 0 ? "warning" : "success"}
-          onClick={() => navigate("/admin/reports")}
-        />
-      </div>
-
-      <div className="dashboardStatGrid dashboardStatGridOwnerSecondary">
-        <MetricCard
-          label="Inventory value"
-          value={formatMoney(dashboard.reportSummary.total_inventory_value)}
-          hint="Current value of tracked stock."
-          onClick={() => navigate("/admin/reports")}
-        />
-        <MetricCard
-          label="Weekly purchasing"
-          value={formatMoney(weeklyPurchasingTotal)}
-          hint="Quick purchases plus purchase records."
-          onClick={() => navigate("/admin/purchases")}
         />
         <MetricCard
           label="Active promos"
           value={formatNumber(dashboard.reportSummary.active_promo_count, 0)}
-          hint="Internal menu promotions currently active."
+          hint="Currently active menu promos."
           onClick={() => navigate("/admin/menu/manage")}
         />
         <MetricCard
           label="Recipe setup"
           value={formatNumber(menuWithoutRecipe.length, 0)}
-          hint="Menu items still missing usable recipes."
+          hint="Menu items missing usable recipes."
           tone={menuWithoutRecipe.length > 0 ? "warning" : "success"}
           onClick={() => navigate("/admin/menu/manage")}
         />
       </div>
 
-      <div className="dashboardInsightsGrid dashboardInsightsTop">
-        <DashboardList
-          title="Weekly Buying Plan"
-          emptyText="No urgent weekly buys suggested."
-          actionLabel="Open Stock Summary"
-          onAction={() => navigate("/admin/inventory/summary")}
-          items={weeklyBuyRecommendations}
-          renderItem={(item) => (
-            <div key={item.id} className="dashboardListRow">
-              <div className="dashboardListMeta">
-                <div className="dashboardListName">{item.ingredient_name}</div>
-                <div className="dashboardListHint">
-                  {normalizeInventoryCategory(item.category)} | Used {formatNumber(item.weekly_used)} {item.base_unit}
-                </div>
-              </div>
-              <div className="dashboardListAside">
-                <span className="badge badge-pending">Buy next</span>
-                <div className="mono dashboardListValue">
-                  {formatNumber(item.recommended_buy_qty)} {item.base_unit}
-                </div>
-              </div>
-            </div>
-          )}
-        />
-
-        <DashboardList
-          title="Inventory Alerts"
-          emptyText="Stock levels look healthy right now."
-          actionLabel="Open Inventory"
-          onAction={() => navigate("/admin/inventory/summary")}
-          items={inventoryAlerts}
-          renderItem={(item) => (
-            <div key={item.id} className="dashboardListRow">
-              <div className="dashboardListMeta">
-                <div className="dashboardListName">{item.ingredient_name}</div>
-                <div className="dashboardListHint">
-                  {item.base_unit || "-"} | {Number(item.total_stock || 0) <= 0 ? "Restock now" : `Low stock (${LOW_STOCK_THRESHOLD} or below)`}
-                </div>
-              </div>
-              <div className="dashboardListAside">
-                <span className={Number(item.total_stock || 0) <= 0 ? "badge badge-inactive" : "badge badge-pending"}>
-                  {Number(item.total_stock || 0) <= 0 ? "Out" : "Low"}
-                </span>
-                <div className="mono dashboardListValue">
-                  {formatNumber(item.total_stock)}
-                </div>
-              </div>
-            </div>
-          )}
-        />
-
-        <DashboardList
-          title="Recipe Setup Watchlist"
-          emptyText="Every menu item already has a recipe linked."
-          actionLabel="Open Menu"
-          onAction={() => navigate("/admin/menu/manage")}
-          items={menuWithoutRecipe}
-          renderItem={(item) => (
-            <div key={item.id} className="dashboardListRow">
-              <div className="dashboardListMeta">
-                <div className="dashboardListName">{item.menu_name}</div>
-                <div className="dashboardListHint">
-                  {!item.recipe_version_id ? "No recipe linked yet" : "Recipe linked but still missing ingredient lines"}
-                </div>
-              </div>
-              <span className="badge badge-inactive">Needs setup</span>
-            </div>
-          )}
-        />
-      </div>
-
-      <div className="dashboardInsightsGrid dashboardInsightsBottom">
-        <DashboardList
-          title="Most Profitable Items"
-          emptyText="Profitability data will appear once recipes and prices are complete."
-          actionLabel="Open Reports"
-          onAction={() => navigate("/admin/reports")}
-          items={dashboard.mostProfitableItems}
-          renderItem={(item) => (
-            <div key={item.id} className="dashboardListRow">
-              <div className="dashboardListMeta">
-                <div className="dashboardListName">{item.menu_name}</div>
-                <div className="dashboardListHint">Healthy margin item</div>
-              </div>
-              <div className="mono dashboardListValue">{formatMoney(item.profit_per_portion || 0)}</div>
-            </div>
-          )}
-        />
-
-        <DashboardList
-          title="Costing Alerts"
-          emptyText="No menu items are currently flagged as loss or low profit."
-          actionLabel="Open Reports"
-          onAction={() => navigate("/admin/reports")}
-          items={dashboard.costingAlerts}
-          renderItem={(item) => (
-            <div key={item.id} className="dashboardListRow">
-              <div className="dashboardListMeta">
-                <div className="dashboardListName">{item.menu_name}</div>
-                <div className="dashboardListHint">{item.status}</div>
-              </div>
-              <div className="mono dashboardListValue">
-                {item.suggested_price != null ? formatMoney(item.suggested_price) : "-"}
-              </div>
-            </div>
-          )}
-        />
-
-        <DashboardList
-          title="Recent Activities"
-          emptyText="Recent activity will appear here once actions are logged."
-          actionLabel="Open Audit Logs"
-          onAction={() => navigate("/audit")}
-          items={dashboard.recentActivities}
-          renderItem={(item) => (
-            <div key={item.id} className="dashboardListRow">
-              <div className="dashboardListMeta">
-                <div className="dashboardListName">{item.summary || `${item.module_name} ${item.action_name}`}</div>
-                <div className="dashboardListHint">
-                  {(item.actor_name || "System")} | {formatDateTimeFriendly(item.created_at)}
-                </div>
-              </div>
-            </div>
-          )}
-        />
+      <div className="dashboardColumns">
+        <div className="dashboardColumn">
+          {leftColumnCards.map((card) => (
+            <DashboardList key={card.key} {...card} />
+          ))}
+        </div>
+        <div className="dashboardColumn">
+          {rightColumnCards.map((card) => (
+            <DashboardList key={card.key} {...card} />
+          ))}
+        </div>
       </div>
     </div>
   );

@@ -27,19 +27,19 @@ function staffActionsForRole(role) {
     return [
       {
         title: "Ingredients",
-        description: "Create and update ingredient records, quantities, and current buying cost.",
+        description: "Ingredients, stock, and costs.",
         to: "/staff/ingredients",
         cta: "Open Ingredients",
       },
       {
         title: "Purchase Requests",
-        description: "Submit weekly or urgent buy requests for owner approval before actual purchasing.",
+        description: "Ingredient buy requests.",
         to: "/staff/purchase-requests",
         cta: "Open Requests",
       },
       {
         title: "Stock Summary",
-        description: "Review current stock totals before buying or issuing ingredients.",
+        description: "Current stock totals.",
         to: "/staff/inventory-summary",
         cta: "View Stock Summary",
       },
@@ -140,9 +140,6 @@ export default function Staff() {
 
         <div className="card">
           <h3 className="staffCardTitle">Assigned Functions</h3>
-          <div className="pageSub staffActionsHint">
-            Only pages backed by your current role permissions are shown here.
-          </div>
 
           {actions.length ? (
             <div className="staffActionGrid">

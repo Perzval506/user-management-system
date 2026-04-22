@@ -138,6 +138,37 @@ async function ensureForeignKey(conn, tableName, constraintName, foreignKeySqlFr
   logInfo(`Added foreign key ${tableName}.${constraintName}`);
 }
 
+async function nullOrphanedOptionalForeignKeys(conn, tableName, columnName, referencedTableName, referencedColumnName) {
+  const [[{ orphan_count: orphanCount }]] = await conn.query(
+    `
+      SELECT COUNT(*) AS orphan_count
+      FROM ${escapeIdentifier(tableName)} child
+      LEFT JOIN ${escapeIdentifier(referencedTableName)} parent
+        ON child.${escapeIdentifier(columnName)} = parent.${escapeIdentifier(referencedColumnName)}
+      WHERE child.${escapeIdentifier(columnName)} IS NOT NULL
+        AND parent.${escapeIdentifier(referencedColumnName)} IS NULL
+    `
+  );
+
+  if (Number(orphanCount) === 0) {
+    return;
+  }
+
+  await conn.query(
+    `
+      UPDATE ${escapeIdentifier(tableName)} child
+      LEFT JOIN ${escapeIdentifier(referencedTableName)} parent
+        ON child.${escapeIdentifier(columnName)} = parent.${escapeIdentifier(referencedColumnName)}
+      SET child.${escapeIdentifier(columnName)} = NULL
+      WHERE child.${escapeIdentifier(columnName)} IS NOT NULL
+        AND parent.${escapeIdentifier(referencedColumnName)} IS NULL
+    `
+  );
+  logInfo(
+    `Cleared ${orphanCount} orphaned ${tableName}.${columnName} value${Number(orphanCount) === 1 ? "" : "s"}`
+  );
+}
+
 async function applySchemaFromFile(conn) {
   logStep("Creating tables from sql/schema.sql...");
 
@@ -172,6 +203,32 @@ async function applyIngredientPricingPatches(conn) {
   logStep("Applying ingredient pricing patches...");
 
   await ensureColumn(conn, "ingredients", "current_ap_cost", "DECIMAL(12,4) NULL");
+  if (await tableExists(conn, "ingredient_ap_prices")) {
+    await ensureColumn(conn, "ingredient_ap_prices", "supplier_name", "VARCHAR(150) NULL");
+    await ensureColumn(conn, "ingredient_ap_prices", "unit", "VARCHAR(40) NULL");
+    await ensureColumn(conn, "ingredient_ap_prices", "ap_cost_per_unit", "DECIMAL(12,4) NOT NULL DEFAULT 0.0000");
+    await ensureColumn(conn, "ingredient_ap_prices", "notes", "VARCHAR(255) NULL");
+
+    if (
+      (await columnExists(conn, "ingredient_ap_prices", "ap_unit_cost")) &&
+      (await columnExists(conn, "ingredient_ap_prices", "ap_cost_per_unit"))
+    ) {
+      await conn.query(
+        `UPDATE ingredient_ap_prices
+            SET ap_cost_per_unit = ap_unit_cost
+          WHERE ap_unit_cost IS NOT NULL
+            AND (ap_cost_per_unit IS NULL OR ap_cost_per_unit = 0)`
+      );
+    }
+
+    await conn.query(
+      `UPDATE ingredient_ap_prices iap
+        JOIN ingredients i ON i.id = iap.ingredient_id
+         SET iap.unit = i.base_unit
+       WHERE iap.unit IS NULL
+          OR TRIM(iap.unit) = ''`
+    );
+  }
   await ensureColumn(conn, "menu_price_history", "synced_to_pos", "TINYINT(1) NOT NULL DEFAULT 0");
 }
 
@@ -436,11 +493,25 @@ async function applyPurchasingAndSalesPatches(conn) {
     `FOREIGN KEY (${escapeIdentifier("ingredient_id")}) REFERENCES ${escapeIdentifier("ingredients")}(${escapeIdentifier("id")}) ON DELETE RESTRICT`
   );
 
+  await nullOrphanedOptionalForeignKeys(
+    conn,
+    "purchase_orders",
+    "purchase_request_id",
+    "purchase_requests",
+    "id"
+  );
   await ensureForeignKey(
     conn,
     "purchase_orders",
     "fk_purchase_order_request",
     `FOREIGN KEY (${escapeIdentifier("purchase_request_id")}) REFERENCES ${escapeIdentifier("purchase_requests")}(${escapeIdentifier("id")}) ON DELETE SET NULL`
+  );
+  await nullOrphanedOptionalForeignKeys(
+    conn,
+    "purchase_requests",
+    "catering_order_id",
+    "catering_orders",
+    "id"
   );
   await ensureForeignKey(
     conn,
@@ -448,6 +519,29 @@ async function applyPurchasingAndSalesPatches(conn) {
     "fk_purchase_request_catering_order",
     `FOREIGN KEY (${escapeIdentifier("catering_order_id")}) REFERENCES ${escapeIdentifier("catering_orders")}(${escapeIdentifier("id")}) ON DELETE SET NULL`
   );
+}
+
+async function applyCateringPatches(conn) {
+  logStep("Applying catering patches...");
+
+  if (!(await tableExists(conn, "catering_orders"))) {
+    logInfo("Table catering_orders does not exist; skipped catering patches");
+    return;
+  }
+
+  await ensureColumn(conn, "catering_orders", "event_start_time", "VARCHAR(40) NULL");
+  await ensureColumn(conn, "catering_orders", "event_end_time", "VARCHAR(40) NULL");
+  await ensureColumn(conn, "catering_orders", "quote_price_per_pax", "DECIMAL(12,2) NOT NULL DEFAULT 0.00");
+
+  if (await columnExists(conn, "catering_orders", "event_time")) {
+    await conn.query(
+      `UPDATE catering_orders
+          SET event_start_time = event_time
+        WHERE (event_start_time IS NULL OR TRIM(event_start_time) = '')
+          AND event_time IS NOT NULL
+          AND TRIM(event_time) <> ''`
+    );
+  }
 }
 
 async function applyAuditPatches(conn) {
@@ -550,6 +644,7 @@ async function main() {
     await applyIngredientPricingPatches(conn);
     await applyInventoryLocationPatches(conn);
     await applyPurchasingAndSalesPatches(conn);
+    await applyCateringPatches(conn);
     await applyAuditPatches(conn);
     await seedAdmin(conn);
 
@@ -565,4 +660,3 @@ async function main() {
 }
 
 main();
-

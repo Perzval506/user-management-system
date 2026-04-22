@@ -8,8 +8,8 @@ export const OWNER_QUICK_ACTIONS = [
   { id: "menuAdd", to: "/admin/menu/add", label: "Add Menu Item", iconKey: "menu", description: "Create a new menu entry." },
   { id: "quickPurchase", to: "/admin/purchases", label: "Quick Purchase", iconKey: "box", description: "Record single purchase entries." },
   { id: "purchaseRequest", to: "/admin/purchase-requests", label: "Purchase Requests", iconKey: "box", description: "Review stockroom requests before purchasing." },
-  { id: "purchaseOrder", to: "/admin/purchase-orders", label: "Purchase Order", iconKey: "box", description: "Open purchase order records." },
-  { id: "inventory", to: "/admin/inventory/summary", label: "Inventory", iconKey: "box", description: "View inventory summary." },
+  { id: "purchaseOrder", to: "/admin/purchase-orders", label: "Purchase Receipt", iconKey: "box", description: "Open multi-item purchase receipts." },
+  { id: "inventory", to: "/admin/inventory/summary", label: "Stock Summary", iconKey: "box", description: "View stock levels and restock suggestions." },
   { id: "cateringOrders", to: "/admin/catering-orders", label: "Catering", iconKey: "catering", description: "Build custom event packages and deposits." },
   { id: "settings", to: "/settings", label: "Settings", iconKey: "settings", description: "Open system preferences." },
 ];

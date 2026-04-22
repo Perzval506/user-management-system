@@ -20,7 +20,7 @@ export default function Info() {
         <div className="lp-infoPanel">
           <h1 className="lp-titleInfo">System Info</h1>
           <p className="lp-subtitleInfo">
-            Boyd&apos;s Pizza House User Management System
+            Boyd&apos;s Pizza House Restaurant Operations
           </p>
 
           <div className="lp-infoCard">
@@ -30,7 +30,7 @@ export default function Info() {
             </div>
             <div className="lp-infoRow">
               <span className="lp-label">Purpose</span>
-              <span className="lp-value">Account management and audit logs</span>
+              <span className="lp-value">Restaurant operations and audit logs</span>
             </div>
             <div className="lp-infoRow">
               <span className="lp-label">Focus</span>

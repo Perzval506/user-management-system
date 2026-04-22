@@ -418,7 +418,7 @@ export default function AdminMenu() {
       toast.push({
         type: "success",
         title: "Updated",
-        message: "Target food cost saved.",
+        message: "Target ingredient cost saved.",
       });
       await load();
       setEditingItem((current) =>
@@ -542,11 +542,11 @@ export default function AdminMenu() {
               ${escapeHtml(report.menu?.menu_name || "-")} | Recipe: ${escapeHtml(report.recipe_name || "-")} | Generated ${escapeHtml(formatDateLong(report.generated_at))}
             </div>
             <div class="cards">
-              <div class="card"><div class="label">Current price</div><div class="value">${escapeHtml(formatMoney(report.menu?.selling_price || 0))}</div></div>
-              <div class="card"><div class="label">Suggested price</div><div class="value">${escapeHtml(formatMoney(report.costing?.suggested_price || 0))}</div></div>
+              <div class="card"><div class="label">Current selling price</div><div class="value">${escapeHtml(formatMoney(report.menu?.selling_price || 0))}</div></div>
+              <div class="card"><div class="label">Suggested selling price</div><div class="value">${escapeHtml(formatMoney(report.costing?.suggested_price || 0))}</div></div>
               <div class="card"><div class="label">Costing status</div><div class="value">${escapeHtml(report.costing?.status || "-")}</div></div>
-              <div class="card"><div class="label">Cost per portion</div><div class="value">${escapeHtml(formatMoney(report.costing?.cost_per_portion || 0))}</div></div>
-              <div class="card"><div class="label">Profit per portion</div><div class="value">${escapeHtml(formatMoney(report.costing?.profit_per_portion || 0))}</div></div>
+              <div class="card"><div class="label">Total cost per serving</div><div class="value">${escapeHtml(formatMoney(report.costing?.cost_per_portion || 0))}</div></div>
+              <div class="card"><div class="label">Profit per serving</div><div class="value">${escapeHtml(formatMoney(report.costing?.profit_per_portion || 0))}</div></div>
               <div class="card"><div class="label">Margin</div><div class="value">${escapeHtml(formatNumber((report.costing?.profit_margin || 0) * 100))}%</div></div>
             </div>
             <h2>Ingredient Lines</h2>
@@ -593,10 +593,10 @@ export default function AdminMenu() {
       const lines = [
         ["Menu Item", report.menu?.menu_name || ""],
         ["Recipe", report.recipe_name || ""],
-        ["Current Price", formatMoney(report.menu?.selling_price || 0)],
-        ["Suggested Price", formatMoney(report.costing?.suggested_price || 0)],
-        ["Cost Per Portion", formatMoney(report.costing?.cost_per_portion || 0)],
-        ["Profit Per Portion", formatMoney(report.costing?.profit_per_portion || 0)],
+        ["Current Selling Price", formatMoney(report.menu?.selling_price || 0)],
+        ["Suggested Selling Price", formatMoney(report.costing?.suggested_price || 0)],
+        ["Total Cost Per Serving", formatMoney(report.costing?.cost_per_portion || 0)],
+        ["Profit Per Serving", formatMoney(report.costing?.profit_per_portion || 0)],
         ["Profit Margin", `${formatNumber((report.costing?.profit_margin || 0) * 100)}%`],
         [],
         ["Ingredient", "Qty Used", "Unit", "Unit Cost", "Line Cost"],
@@ -636,7 +636,7 @@ export default function AdminMenu() {
       <div className="pageHeader">
         <div>
           <h2 className="pageTitle">Menu Management</h2>
-          <div className="pageSub">Manage menu items, recipes, and profitability signals from one place.</div>
+          <div className="pageSub">Menu items, recipes, and profitability.</div>
         </div>
 
         <div className="pageActions">
@@ -650,12 +650,18 @@ export default function AdminMenu() {
       </div>
 
       <div className="dashboardStatGrid dashboardStatGridOwnerPrimary" style={{ marginBottom: 14 }}>
-        <div className="dashboardMetricCard">
-          <div className="dashboardMetricLabel">Loss items</div>
+        <div className="card dashboardMetricCard dashboardMetricCard-danger">
+          <div className="dashboardMetricHead">
+            <div className="dashboardMetricLabel">Loss items</div>
+            <span className="dashboardMetricTone dashboardMetricTone-danger">Urgent</span>
+          </div>
           <div className="dashboardMetricValue">{profitabilitySummary.loss}</div>
         </div>
-        <div className="dashboardMetricCard">
-          <div className="dashboardMetricLabel">Low-profit items</div>
+        <div className="card dashboardMetricCard dashboardMetricCard-warning">
+          <div className="dashboardMetricHead">
+            <div className="dashboardMetricLabel">Low-profit items</div>
+            <span className="dashboardMetricTone dashboardMetricTone-warning">Review</span>
+          </div>
           <div className="dashboardMetricValue">{profitabilitySummary.low}</div>
         </div>
       </div>
@@ -804,7 +810,7 @@ export default function AdminMenu() {
             )}
 
             {(mode === "create" || activeSection === MANAGE_SECTIONS.details) && (
-              <form onSubmit={onSubmit} className="formGrid modalSection">
+              <form onSubmit={onSubmit} className="formGrid modalSection menuManageForm">
                 <div>
                   <label>Menu Name</label>
                   <input
@@ -852,42 +858,44 @@ export default function AdminMenu() {
                   />
                 </div>
 
-                <div>
-                  <label>Status</label>
-                  <select name="status" value={form.status} onChange={onChange} className="input">
-                    <option value="ACTIVE">ACTIVE</option>
-                    <option value="INACTIVE">INACTIVE</option>
-                  </select>
+                <div className="menuManageCompactRow">
+                  <div className="menuManageCompactField">
+                    <label>Status</label>
+                    <select name="status" value={form.status} onChange={onChange} className="input">
+                      <option value="ACTIVE">ACTIVE</option>
+                      <option value="INACTIVE">INACTIVE</option>
+                    </select>
+                  </div>
+
+                  <div className="menuManageCompactField">
+                    <label>Menu type</label>
+                    <select name="menu_type" value={form.menu_type} onChange={onChange} className="input">
+                      <option value="FOOD">FOOD</option>
+                      <option value="DRINK">DRINK</option>
+                      <option value="ADD_ON">ADD ON</option>
+                    </select>
+                  </div>
+
+                  <div className="menuManageCompactField menuManageCompactField-wide">
+                    <label>
+                      Target ingredient cost %
+                      <span className="inlineMuted"> - e.g., 0.30 = 30%</span>
+                    </label>
+                    <input
+                      name="target_food_cost_percent"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="1"
+                      value={form.target_food_cost_percent}
+                      onChange={onChange}
+                      className="input"
+                      placeholder="0.30"
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label>Menu type</label>
-                  <select name="menu_type" value={form.menu_type} onChange={onChange} className="input">
-                    <option value="FOOD">FOOD</option>
-                    <option value="DRINK">DRINK</option>
-                    <option value="ADD_ON">ADD ON</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label>
-                    Target food cost (decimal)
-                    <span className="inlineMuted"> - e.g., 0.30 = 30%</span>
-                  </label>
-                  <input
-                    name="target_food_cost_percent"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    max="1"
-                    value={form.target_food_cost_percent}
-                    onChange={onChange}
-                    className="input"
-                    placeholder="0.30"
-                  />
-                </div>
-
-                <div className="formRow2">
+                <div className="formRow3">
                   <div>
                     <label>Dine-in packaging cost</label>
                     <input
@@ -914,20 +922,19 @@ export default function AdminMenu() {
                       placeholder="0.00"
                     />
                   </div>
-                </div>
-
-                <div>
-                  <label>Delivery packaging cost</label>
-                  <input
-                    name="delivery_packaging_cost"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={form.delivery_packaging_cost}
-                    onChange={onChange}
-                    className="input"
-                    placeholder="0.00"
-                  />
+                  <div>
+                    <label>Delivery packaging cost</label>
+                    <input
+                      name="delivery_packaging_cost"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={form.delivery_packaging_cost}
+                      onChange={onChange}
+                      className="input"
+                      placeholder="0.00"
+                    />
+                  </div>
                 </div>
 
                 <div className="formActions">
@@ -952,24 +959,24 @@ export default function AdminMenu() {
                 </div>
 
                 <div className="formRow3">
-                  <div className="card">
-                    <div className="inventoryReviewStatLabel">Estimated cost</div>
-                    <div className="inventoryReviewStatValue">
+                  <div className="metricMiniCard">
+                    <div className="metricMiniLabel">Total cost per serving</div>
+                    <div className="metricMiniValue">
                       {editingItem?.cost_per_portion != null ? formatMoney(editingItem.cost_per_portion) : "-"}
                     </div>
                   </div>
-                  <div className="card">
-                    <div className="inventoryReviewStatLabel">Suggested price</div>
-                    <div className="inventoryReviewStatValue">
+                  <div className="metricMiniCard">
+                    <div className="metricMiniLabel">Suggested selling price</div>
+                    <div className="metricMiniValue">
                       {editingItem?.suggested_price != null ? formatMoney(editingItem.suggested_price) : "-"}
                     </div>
                   </div>
-                  <div className="card">
-                    <div className="inventoryReviewStatLabel">Profitability</div>
-                    <div className="inventoryReviewStatValue" style={{ fontSize: 18 }}>
+                  <div className="metricMiniCard">
+                    <div className="metricMiniLabel">Profitability</div>
+                    <div className="metricMiniValue" style={{ fontSize: 18 }}>
                       {editingItem?.costing_status || "No data"}
                     </div>
-                    <div className="inventoryReviewStatMeta">
+                    <div className="metricMiniHelper">
                       {editingItem?.profit_margin != null ? `Margin ${formatNumber((editingItem.profit_margin || 0) * 100)}%` : "Save a recipe to calculate this"}
                     </div>
                   </div>
@@ -997,7 +1004,7 @@ export default function AdminMenu() {
 
                 <div>
                   <label>
-                    Target food cost (decimal)
+                    Target ingredient cost %
                     <span className="inlineMuted"> - 0.30 = 30%</span>
                   </label>
                   <div className="formRow2 align-center">
@@ -1016,9 +1023,7 @@ export default function AdminMenu() {
                       Save target %
                     </button>
                   </div>
-                  <div className="formNote">
-                    Used for suggested pricing and profitability.
-                  </div>
+                  <div className="formNote">Example: 0.35 = 35%.</div>
                 </div>
 
                 <div className="formRow2">
@@ -1062,9 +1067,7 @@ export default function AdminMenu() {
                     onChange={onChange}
                     placeholder="0.00"
                   />
-                  <div className="formNote">
-                    Use these for containers, utensils, bags, and other order-type-specific packaging.
-                  </div>
+                  <div className="formNote">Containers, utensils, bags, etc.</div>
                 </div>
 
                 <div className="formActions">
@@ -1256,9 +1259,7 @@ export default function AdminMenu() {
                   <div className="card">
                     {/* New consolidation: recipe creation now stays inside the same management surface. */}
                     <h4 className="h2">No recipe linked yet</h4>
-                    <p className="mutedHint">
-                      Create a recipe to start managing ingredient lines for this menu item.
-                    </p>
+                    <p className="mutedHint">Create a recipe to add ingredient lines.</p>
                     <form className="formGrid" onSubmit={(event) => {
                       event.preventDefault();
                       handleCreateRecipe();

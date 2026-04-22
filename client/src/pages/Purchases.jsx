@@ -103,8 +103,8 @@ export default function Purchases() {
     <div className="page">
       <div className="pageHeader">
         <div>
-          <h2 className="pageTitle">Purchases</h2>
-          <div className="pageSub">Log quick single-ingredient buys and keep inventory in sync.</div>
+          <h2 className="pageTitle">Quick Purchases</h2>
+          <div className="pageSub">Single-ingredient purchase entries.</div>
         </div>
 
         <div className="pageActions">
@@ -115,10 +115,6 @@ export default function Purchases() {
       </div>
 
       <div className="card">
-        <div className="tableFilterBar mutedHint">
-          Use this for one quick ingredient purchase. If the receipt has several line items, record it in Purchase Orders instead.
-        </div>
-
         <form className="formGrid" onSubmit={onSubmit}>
           <div>
             <label>Ingredient</label>
@@ -136,11 +132,9 @@ export default function Purchases() {
               <input name="quantity" value={form.quantity} onChange={onChange} className="input" type="number" step="0.01" min="0.01" placeholder="0.00" />
             </div>
             <div>
-              <label>Total cost</label>
+              <label>Amount paid</label>
               <input name="price" value={form.price} onChange={onChange} className="input" type="number" step="0.01" min="0" placeholder="0.00" />
-              <div className="formNote">
-                Enter the total amount paid for this single purchase.
-              </div>
+              <div className="formNote">Total paid for this ingredient.</div>
             </div>
           </div>
 
@@ -163,12 +157,19 @@ export default function Purchases() {
           <div className="tableLoading">Loading...</div>
         ) : (
           <div className="tableScroller">
-            <table className="table">
+            <table className="table quickPurchaseTable">
+              <colgroup>
+                <col />
+                <col style={{ width: 120 }} />
+                <col style={{ width: 140 }} />
+                <col style={{ width: 180 }} />
+                <col style={{ width: 110 }} />
+              </colgroup>
               <thead>
                 <tr>
                   <th>Ingredient</th>
                   <th className="text-right">Quantity</th>
-                  <th className="text-right">Total cost</th>
+                <th className="text-right">Amount paid</th>
                   <th>Created at</th>
                   <th>Actions</th>
                 </tr>
@@ -201,8 +202,13 @@ export default function Purchases() {
       <div className="tableWrap inventoryCategoryTable">
         <div className="tableTopBar">Weekly Spending History</div>
         <div className="tableScroller">
-          <table className="table">
-            <thead>
+            <table className="table quickPurchaseHistoryTable">
+              <colgroup>
+                <col />
+                <col style={{ width: 150 }} />
+                <col style={{ width: 150 }} />
+              </colgroup>
+              <thead>
               <tr>
                 <th>Week starting</th>
                 <th className="text-right">Purchase count</th>
@@ -219,7 +225,7 @@ export default function Purchases() {
               ))}
               {weeklyHistory.length === 0 && (
                 <tr>
-                  <td colSpan="3" className="tableEmpty">Weekly spending history will appear once purchases are recorded.</td>
+                  <td colSpan="3" className="tableEmpty">No weekly history yet.</td>
                 </tr>
               )}
             </tbody>

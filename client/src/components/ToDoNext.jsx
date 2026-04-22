@@ -14,7 +14,12 @@ export default function ToDoNext({ items = [], loading = false, threshold = 5 })
   );
 
   const missing = useMemo(
-    () => items.filter((item) => Number(item.quantity ?? item.total_stock ?? 0) <= 0 || item.status === "INACTIVE"),
+    () =>
+      items.filter(
+        (item) =>
+          Number(item.quantity ?? item.total_stock ?? 0) <= 0 &&
+          item.status !== "INACTIVE"
+      ),
     [items]
   );
 
@@ -25,9 +30,7 @@ export default function ToDoNext({ items = [], loading = false, threshold = 5 })
         <span className="watchlistSub">Inventory watchlist</span>
       </div>
 
-      <div className="watchlistLead">
-        Use this as your restock cue: low-stock items should be purchased soon, while out-of-stock items need immediate attention.
-      </div>
+      <div className="watchlistLead">Restock low and out-of-stock items first.</div>
 
       {loading && <div className="watchlistLoading">Checking inventory...</div>}
 

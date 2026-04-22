@@ -35,7 +35,7 @@ export default function Login() {
       <div className="card card-pad authCard">
         <h1 className="h1 authTitle">Login</h1>
         <p className="muted authSub">
-          Sign in to Boyd’s Pizza House UMS
+          Sign in to Boyd's Pizza House
         </p>
 
         <form onSubmit={onSubmit} className="authForm">

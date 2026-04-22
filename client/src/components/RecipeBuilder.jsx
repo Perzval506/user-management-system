@@ -17,24 +17,70 @@ const normalizeLine = (line = {}) => ({
   ingredient_id: line.ingredient_id || null,
   qty_used: line.qty_used ?? "",
   qty_unit: line.qty_unit ?? "",
-  price: line.price ?? "",
+  price:
+    line.price === null ||
+    typeof line.price === "undefined" ||
+    line.price === "" ||
+    Number(line.price) === 0
+      ? ""
+      : line.price,
   yield_percent: line.yield_percent ?? "",
 });
+
+function preferredUnitCost(ingredient) {
+  const currentApCost = Number(ingredient?.current_ap_cost);
+  if (Number.isFinite(currentApCost) && currentApCost > 0) return currentApCost;
+
+  const suggestedUnitCost = Number(ingredient?.suggested_unit_cost);
+  if (Number.isFinite(suggestedUnitCost) && suggestedUnitCost > 0) return suggestedUnitCost;
+
+  return null;
+}
+
+function isBlankOrZero(value) {
+  return value === "" || value === null || typeof value === "undefined" || Number(value) === 0;
+}
+
+function nearlyEqual(a, b) {
+  return Math.abs(Number(a) - Number(b)) < 0.0001;
+}
 
 const buildDefaultLine = (ingredientId, ingredientsOpt, units) => {
   const selectedIngredient = ingredientsOpt.find((ingredient) => ingredient.id === ingredientId);
   return normalizeLine({
     ingredient_id: ingredientId || null,
     qty_unit: selectedIngredient?.base_unit || units[0] || "",
-    price:
-      selectedIngredient?.suggested_unit_cost != null &&
-      Number.isFinite(Number(selectedIngredient.suggested_unit_cost))
-        ? String(selectedIngredient.suggested_unit_cost)
-        : "",
+    price: "",
     qty_used: "",
     yield_percent: "",
   });
 };
+
+function getCostingStatusTone(status) {
+  if (status === "High Profit" || status === "Moderate Profit") return "good";
+  if (status === "Low Profit") return "warn";
+  if (status === "Loss") return "bad";
+  return "neutral";
+}
+
+function getCostingActionText(costingSummary, estimatedPortions) {
+  if (estimatedPortions != null && estimatedPortions < 1) {
+    return "Check the recipe output. The system thinks this batch makes less than one serving.";
+  }
+  if (estimatedPortions == null) {
+    return "Set the recipe output and serving size so per-serving pricing is accurate.";
+  }
+  if (costingSummary?.has_unit_mismatch) {
+    return "Review the ingredient units. Some lines may not match their base unit.";
+  }
+  if (costingSummary?.status === "Loss") {
+    return "Raise the selling price or lower recipe cost before selling this item.";
+  }
+  if (costingSummary?.status === "Low Profit") {
+    return "Review this item before discounting or promoting it.";
+  }
+  return "Recipe costing is ready for pricing review.";
+}
 
 const RecipeLineRow = React.memo(function RecipeLineRow({
   line,
@@ -45,10 +91,8 @@ const RecipeLineRow = React.memo(function RecipeLineRow({
   onRemove,
 }) {
   const selectedIngredient = ingredientsOpt.find((ingredient) => ingredient.id === line.ingredient_id) || null;
-  const suggestedUnitCost =
-    selectedIngredient?.suggested_unit_cost != null && Number.isFinite(Number(selectedIngredient.suggested_unit_cost))
-      ? Number(selectedIngredient.suggested_unit_cost)
-      : null;
+  const suggestedUnitCost = preferredUnitCost(selectedIngredient);
+  const displayedUnitCost = isBlankOrZero(line.price) && suggestedUnitCost != null ? String(suggestedUnitCost) : line.price ?? "";
 
   return (
     <tr>
@@ -62,12 +106,7 @@ const RecipeLineRow = React.memo(function RecipeLineRow({
             onChange(idx, {
               ingredient_id: newId,
               qty_unit: selectedIngredient ? selectedIngredient.base_unit : "",
-              price:
-                (line.price === "" || line.price === null) &&
-                selectedIngredient?.suggested_unit_cost != null &&
-                Number.isFinite(Number(selectedIngredient.suggested_unit_cost))
-                  ? String(selectedIngredient.suggested_unit_cost)
-                  : line.price,
+              price: isBlankOrZero(line.price) ? "" : line.price,
             });
           }}
         >
@@ -115,12 +154,12 @@ const RecipeLineRow = React.memo(function RecipeLineRow({
           type="number"
           step="0.01"
           min="0"
-          value={line.price ?? ""}
+          value={displayedUnitCost}
           onChange={(event) => onChange(idx, { price: event.target.value })}
         />
         {suggestedUnitCost != null && (
-          <div style={{ color: "#6B7280", marginTop: 4, fontSize: 12 }}>
-            Recent cost suggestion: {formatMoney(suggestedUnitCost)}
+          <div className="formNote">
+            Latest purchase cost: {formatMoney(suggestedUnitCost)} / {selectedIngredient?.base_unit || "unit"}
           </div>
         )}
       </td>
@@ -203,14 +242,18 @@ export default function RecipeBuilder({
   const costingSummary = useMemo(() => {
     const yieldAmount = Number(recipeVersion?.yield_amount);
     const portionSize = Number(recipeVersion?.portion_size);
+    const hasDefinedPortions = isFinite(yieldAmount) && isFinite(portionSize) && yieldAmount > 0 && portionSize > 0;
 
     const ingredientsForCost = lines.map((line) => {
       const ingredient = ingredientsOpt.find((i) => i.id === line.ingredient_id);
       const qtyUsed = Number(line.qty_used) || 0;
-      const baseCost =
-        line.price !== "" && line.price !== null && isFinite(Number(line.price))
-          ? Number(line.price)
-          : Number(ingredient?.current_ap_cost ?? ingredient?.suggested_unit_cost ?? 0) || 0;
+      const fallbackCost = preferredUnitCost(ingredient) ?? 0;
+      const linePrice = Number(line.price);
+      const hasManualLinePrice =
+        !isBlankOrZero(line.price) &&
+        Number.isFinite(linePrice) &&
+        (fallbackCost <= 0 || !nearlyEqual(linePrice, fallbackCost));
+      const baseCost = hasManualLinePrice ? linePrice : fallbackCost;
       const yieldPercentRaw =
         line.yield_percent === "" || line.yield_percent === null
           ? 100
@@ -221,15 +264,15 @@ export default function RecipeBuilder({
         quantity_unit: line.qty_unit,
         base_unit: ingredient?.base_unit || line.qty_unit,
         ap_cost_per_unit: isFinite(baseCost) ? baseCost : 0,
-        uses_manual_unit_cost: line.price !== "" && line.price !== null && isFinite(Number(line.price)),
+        uses_manual_unit_cost: hasManualLinePrice,
         yield_percent: isFinite(yieldPercentRaw) ? yieldPercentRaw : 100,
       };
     });
 
     return computeMenuItemCosting({
       ingredients: ingredientsForCost,
-      total_yield_grams: isFinite(yieldAmount) ? yieldAmount : 0,
-      portion_size_grams: isFinite(portionSize) ? portionSize : 0,
+      total_yield_grams: hasDefinedPortions ? yieldAmount : 1,
+      portion_size_grams: hasDefinedPortions ? portionSize : 1,
       target_food_cost_percent: Number(targetFoodCostPercent) || 0,
       current_selling_price: Number(currentSellingPrice) || 0,
       order_type: costingOrderType,
@@ -238,6 +281,8 @@ export default function RecipeBuilder({
       delivery_packaging_cost: Number(deliveryPackagingCost) || 0,
     });
   }, [lines, ingredientsOpt, recipeVersion, targetFoodCostPercent, currentSellingPrice, costingOrderType, dineInPackagingCost, takeoutPackagingCost, deliveryPackagingCost]);
+  const costingTone = getCostingStatusTone(costingSummary?.status);
+  const costingActionText = getCostingActionText(costingSummary, estimatedPortions);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -465,7 +510,7 @@ export default function RecipeBuilder({
           ingredient_id: Number(line.ingredient_id),
           qty_used: Number(line.qty_used),
           qty_unit: line.qty_unit,
-          price: line.price === "" || line.price === null ? null : Number(line.price),
+          price: isBlankOrZero(line.price) ? null : Number(line.price),
           yield_percent:
             line.yield_percent === "" || line.yield_percent === null
               ? null
@@ -519,52 +564,43 @@ export default function RecipeBuilder({
   if (loading) return <div>Loading recipe...</div>;
 
   return (
-    <div>
+    <div className="recipeBuilder">
       {error && <div style={{ marginBottom: 8, color: "crimson" }}>{error}</div>}
 
-      <div
-        style={{
-          marginBottom: 12,
-          display: "flex",
-          gap: 12,
-          alignItems: "center",
-          flexWrap: "wrap",
-        }}
-      >
-        <div>
-          <strong>Recipe version:</strong>{" "}
-          {recipeVersion?.version_no ? `v${recipeVersion.version_no}` : "Draft"}
-        </div>
-        <div style={{ minWidth: 180 }}>
-          <label style={{ display: "block", fontSize: 12, color: "#6B7280", marginBottom: 4 }}>Costing order type</label>
+      <div className="recipeHeaderCard">
+        <div className="recipeHeaderMeta">
+          <div className="recipeHeaderBlock">
+            <div className="recipeHeaderLabel">Version</div>
+            <div className="recipeHeaderValue">{recipeVersion?.version_no ? `v${recipeVersion.version_no}` : "Draft"}</div>
+          </div>
+          <div className="recipeHeaderBlock recipeHeaderControl">
+            <label className="recipeHeaderLabel">Order type</label>
+            <div className="recipeHeaderSelectWrap">
           <select className="input" value={costingOrderType} onChange={(event) => setCostingOrderType(event.target.value)}>
             <option value="DINE_IN">DINE IN</option>
             <option value="TAKEOUT">TAKEOUT</option>
             <option value="DELIVERY">DELIVERY</option>
           </select>
-        </div>
-        {dirty && (
-          <span style={{ marginLeft: 4, color: "#b44", fontWeight: 700 }}>
-            Unsaved changes
-          </span>
-        )}
-          <div style={{ marginLeft: "auto", fontWeight: 800 }}>
-            Total ingredient cost: {formatMoney(Number.isFinite(totalCost) ? totalCost : 0)}
+            </div>
           </div>
+          {dirty && (
+            <div className="recipeDirtyPill">Unsaved changes</div>
+          )}
+        </div>
       </div>
 
-      <div className="card" style={{ padding: 12, marginBottom: 12 }}>
-        <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
-          <div style={{ fontWeight: 800, fontSize: 18 }}>Recipe Versions</div>
+      <div className="card recipeVersionsCard">
+        <div className="recipeSectionHead">
+          <div>
+            <div className="recipeSectionTitle">Versions</div>
+            <div className="recipeSectionSub">Switch or lock a version.</div>
+          </div>
           <button type="button" className="btn btn-primary" onClick={createNewVersion} disabled={versionBusy}>
             Create New Version
           </button>
-          <div style={{ color: "#6B7280" }}>
-            Use a new version before changing a locked or approved recipe.
-          </div>
         </div>
 
-        <div style={{ overflowX: "auto" }}>
+        <div className="recipeTableWrap">
           <table className="table">
             <thead>
               <tr>
@@ -582,10 +618,10 @@ export default function RecipeBuilder({
                 return (
                   <tr key={version.id}>
                     <td>
-                      <div style={{ fontWeight: 700 }}>
+                      <div className="recipeVersionName">
                         v{version.version_no}{isCurrent ? " (Current)" : ""}
                       </div>
-                      <div style={{ color: "#6B7280", fontSize: 12 }}>
+                      <div className="recipeVersionMeta">
                         {version.ingredient_count || 0} ingredients • {version.is_locked ? "Locked" : "Editable"}
                       </div>
                     </td>
@@ -620,7 +656,7 @@ export default function RecipeBuilder({
               {recipeVersions.length === 0 && (
                 <tr>
                   <td colSpan="6" style={{ padding: 12, opacity: 0.7 }}>
-                    Recipe versions will appear here once a recipe is linked to this menu item.
+                    No recipe versions yet.
                   </td>
                 </tr>
               )}
@@ -629,12 +665,14 @@ export default function RecipeBuilder({
         </div>
       </div>
 
-      <div style={{ display: "grid", gap: 12 }}>
-        <div className="card" style={{ padding: 12 }}>
+      <div className="recipeContent">
+        <div className="card recipeSectionCard">
           {/* UX cleanup: recipe setup is now presented as a first step so the workflow is easier to follow. */}
-          <div style={{ marginBottom: 6, fontWeight: 700 }}>Step 1: Define the recipe output</div>
-          <div style={{ color: "#6B7280", marginBottom: 12, lineHeight: 1.5 }}>
-            Set how much this recipe makes, then define a serving size so portions and costing are easier to understand.
+          <div className="recipeSectionHead recipeSectionHead-compact">
+            <div>
+              <div className="recipeSectionTitle">Output</div>
+              <div className="recipeSectionSub">Batch and serving size.</div>
+            </div>
           </div>
           <div className="formRow2">
             <div>
@@ -703,62 +741,57 @@ export default function RecipeBuilder({
             </div>
           </div>
 
-          <div
-            style={{
-              display: "grid",
-              gap: 10,
-              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-              marginTop: 12,
-            }}
-          >
-            <div className="card" style={{ background: "#f8fafc" }}>
-              <div style={{ color: "#6B7280", marginBottom: 4 }}>Ingredient lines</div>
-              <div style={{ fontWeight: 800, fontSize: 22 }}>{lines.length}</div>
+          <div className="recipeMetricGrid">
+            <div className="metricMiniCard">
+              <div className="metricMiniLabel">Ingredient lines</div>
+              <div className="metricMiniValue">{lines.length}</div>
             </div>
-            <div className="card" style={{ background: "#f8fafc" }}>
-              <div style={{ color: "#6B7280", marginBottom: 4 }}>Estimated portions</div>
-                <div style={{ fontWeight: 800, fontSize: 22 }}>{estimatedPortions == null ? "-" : formatNumber(estimatedPortions)}</div>
+            <div className="metricMiniCard">
+              <div className="metricMiniLabel">Servings made</div>
+                <div className="metricMiniValue">{estimatedPortions == null ? "-" : formatNumber(estimatedPortions)}</div>
+                {estimatedPortions == null ? (
+                  <div className="metricMiniHelper">
+                    Uses one batch until output is set.
+                  </div>
+                ) : null}
             </div>
-            <div className="card" style={{ background: "#f8fafc" }}>
-                <div style={{ color: "#6B7280", marginBottom: 4 }}>Estimated ingredient cost</div>
-                <div style={{ fontWeight: 800, fontSize: 22 }}>{formatMoney(totalCost)}</div>
-            </div>
-            <div className="card" style={{ background: "#f8fafc" }}>
-              <div style={{ color: "#6B7280", marginBottom: 4 }}>Cost per portion</div>
-              <div style={{ fontWeight: 800, fontSize: 22 }}>
+            <div className="metricMiniCard">
+              <div className="metricMiniLabel">Cost per serving</div>
+              <div className="metricMiniValue">
                 {formatMoney(costingSummary?.cost_per_portion || 0)}
               </div>
             </div>
-            <div className="card" style={{ background: "#f8fafc" }}>
-              <div style={{ color: "#6B7280", marginBottom: 4 }}>Packaging / portion</div>
-              <div style={{ fontWeight: 800, fontSize: 22 }}>
+            <div className="metricMiniCard">
+              <div className="metricMiniLabel">Packaging</div>
+              <div className="metricMiniValue">
                 {formatMoney(costingSummary?.packaging_cost_per_portion || 0)}
               </div>
             </div>
-            <div className="card" style={{ background: "#f8fafc" }}>
-              <div style={{ color: "#6B7280", marginBottom: 4 }}>Suggested price</div>
-              <div style={{ fontWeight: 800, fontSize: 22 }}>
+            <div className="metricMiniCard">
+              <div className="metricMiniLabel">Suggested price</div>
+              <div className="metricMiniValue">
                 {formatMoney(costingSummary?.suggested_price || 0)}
               </div>
             </div>
           </div>
         </div>
 
-        <div className="card" style={{ padding: 12 }}>
-          <div style={{ marginBottom: 6, fontWeight: 700 }}>Step 2: Add the ingredient lines</div>
-          <div style={{ color: "#6B7280", marginBottom: 12 }}>
-            Add ingredients from the list, then enter the amount used, the unit, the unit cost, and the optional usable yield percentage.
-            Recent buying history is used to suggest a unit cost when available.
+        <div className="card recipeSectionCard">
+          <div className="recipeSectionHead recipeSectionHead-compact">
+            <div>
+              <div className="recipeSectionTitle">Ingredients</div>
+              <div className="recipeSectionSub">Amounts and yield.</div>
+            </div>
           </div>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-            <div style={{ flex: 1, minWidth: 260 }}>
+          <div className="recipeAddBar">
+            <div className="recipeAddControl">
               <MultiSelectDropdown
                 label="Add ingredients"
                 options={ingredientOptions}
                 selected={selectedToAdd}
                 onChange={setSelectedToAdd}
                 onDone={addSelected}
-                placeholder="Choose one or more ingredients"
+                placeholder="Choose ingredients"
                 doneLabel="Add selected"
               />
             </div>
@@ -767,15 +800,15 @@ export default function RecipeBuilder({
             </button>
           </div>
 
-          <div style={{ overflowX: "auto", marginTop: 12 }}>
+          <div className="recipeTableWrap recipeIngredientTable">
             <table className="table">
               <thead>
                 <tr>
                   <th>Ingredient</th>
                   <th>Amount used</th>
                   <th>Unit</th>
-                  <th>Unit cost</th>
-                  <th>Yield %</th>
+                  <th>Latest cost / unit</th>
+                  <th>Usable yield %</th>
                   <th></th>
                 </tr>
               </thead>
@@ -794,7 +827,7 @@ export default function RecipeBuilder({
                 {lines.length === 0 && (
                   <tr>
                     <td colSpan="6" style={{ padding: 12, opacity: 0.7 }}>
-                      No ingredients added yet. Start with "Add ingredients" for stock items, or use "Add blank row" when you want to fill in one line manually.
+                      No ingredients added yet.
                     </td>
                   </tr>
                 )}
@@ -803,7 +836,7 @@ export default function RecipeBuilder({
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div className="recipeSaveBar">
           <button
             type="button"
             onClick={() => setShowDiscardConfirm(true)}
@@ -812,9 +845,9 @@ export default function RecipeBuilder({
           >
             Discard
           </button>
-          <div style={{ flex: 1 }} />
-          <div style={{ color: "#6B7280", display: "flex", alignItems: "center" }}>
-            Step 3: Save the recipe once the quantities and costs look correct.
+          <div className="recipeSaveSpacer" />
+          <div className="recipeSaveHint">
+            Save when the recipe looks right.
           </div>
           <button type="button" onClick={save} disabled={saving} className="btn btn-primary">
             {saving ? "Saving..." : "Save recipe"}
@@ -822,50 +855,25 @@ export default function RecipeBuilder({
         </div>
       </div>
 
-      <div className="card" style={{ padding: 12, marginTop: 12 }}>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <div>
-            <div style={{ color: "#6B7280", fontSize: 12, textTransform: "uppercase" }}>Costing status</div>
-            <div style={{ fontWeight: 800, fontSize: 18, display: "flex", alignItems: "center", gap: 8 }}>
-              <span
-                style={{
-                  padding: "4px 10px",
-                  borderRadius: 999,
-                  background:
-                    costingSummary?.status === "High Profit"
-                      ? "#DCFCE7"
-                      : costingSummary?.status === "Moderate Profit"
-                        ? "#E8F5E9"
-                        : costingSummary?.status === "Low Profit"
-                          ? "#FEF3C7"
-                          : costingSummary?.status === "Loss"
-                        ? "#FEF2F2"
-                        : "#F3F4F6",
-                  color:
-                    costingSummary?.status === "High Profit"
-                      ? "#166534"
-                      : costingSummary?.status === "Moderate Profit"
-                      ? "#166534"
-                      : costingSummary?.status === "Low Profit"
-                        ? "#92400E"
-                      : costingSummary?.status === "Loss"
-                        ? "#991B1B"
-                        : "#374151",
-                }}
-              >
-                {costingSummary?.status || "N/A"}
-              </span>
-              <span style={{ color: "#6B7280", fontWeight: 500 }}>{costingSummary?.comment}</span>
+      <div className="card costingPanel">
+        <div className="costingPanelHead">
+          <div className="costingResult">
+            <div className="sectionEyebrow">Pricing review</div>
+            <div className="costingResultLine">
+              <span className={`statusPill statusPill-${costingTone}`}>{costingSummary?.status || "N/A"}</span>
+              <span className="costingResultText">{costingSummary?.comment}</span>
             </div>
+            <div className="costingActionText">{costingActionText}</div>
             {costingSummary?.has_unit_mismatch ? (
-              <div style={{ color: "#b45309", fontSize: 13, marginTop: 6 }}>
-                Some recipe line units do not match their ingredient base units, so the costing result needs review.
-              </div>
+              <div className="warningText">Unit mismatch. Review costing.</div>
+            ) : null}
+            {estimatedPortions == null ? (
+              <div className="mutedHint">Output not set. Costing uses one batch.</div>
             ) : null}
           </div>
-          <div style={{ marginLeft: "auto", minWidth: 220 }}>
+          <div className="costingTargetBox">
             <label style={{ display: "block" }}>
-              Target food cost (decimal)
+              Target food cost %
               <span style={{ color: "#6B7280" }}> — 0.30 = 30%</span>
             </label>
             <input
@@ -877,56 +885,54 @@ export default function RecipeBuilder({
               value={targetFoodCostPercent ?? ""}
               onChange={(e) => onTargetChange && onTargetChange(e.target.value)}
             />
-            <div style={{ color: "#6B7280", fontSize: 12, marginTop: 4 }}>
-              Saved via Pricing &gt; Save target %.
-            </div>
+            <div className="formNote">Set in Pricing.</div>
           </div>
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-            gap: 12,
-            marginTop: 14,
-          }}
-        >
-          <CostCell label="Batch cost" value={formatMoney(costingSummary?.batch_cost || 0)} />
+        <div className="recipeCostGrid">
           <CostCell
-            label="Food cost / portion"
+            label="Recipe cost"
+            value={formatMoney(costingSummary?.batch_cost || 0)}
+            helper="Full batch."
+          />
+          <CostCell
+            label="Food cost"
             value={formatMoney(costingSummary?.food_cost_per_portion || 0)}
+            helper="Per serving."
           />
           <CostCell
-            label="Cost per portion"
+            label="Total cost"
             value={formatMoney(costingSummary?.cost_per_portion || 0)}
+            helper="Per serving."
           />
           <CostCell
-            label="Packaging / portion"
+            label="Packaging"
             value={formatMoney(costingSummary?.packaging_cost_per_portion || 0)}
             helper={`Applied for ${String(costingSummary?.order_type || costingOrderType).replace("_", " ")}`}
           />
           <CostCell
             label="Suggested price"
             value={formatMoney(costingSummary?.suggested_price || 0)}
-            helper="Based on target food cost"
+            helper="From target food cost."
           />
           <CostCell
             label="Current price"
             value={formatMoney(currentSellingPrice || 0)}
-            helper="From latest price history"
+            helper="Latest history."
           />
           <CostCell
-            label="Profit per portion"
+            label="Profit"
             value={formatMoney(costingSummary?.profit_per_portion || 0)}
-            helper={`Margin: ${formatNumber(costingSummary?.profit_margin * 100 || 0)}% | Food cost: ${formatNumber(costingSummary?.actual_food_cost_percent * 100 || 0)}%`}
+            helper={`Margin: ${formatNumber(costingSummary?.profit_margin * 100 || 0)}% | Ingredient cost: ${formatNumber(costingSummary?.actual_food_cost_percent * 100 || 0)}%`}
           />
           <CostCell
-            label="Portions per batch"
+            label="Servings"
             value={
               costingSummary?.number_of_portions != null
                 ? formatNumber(costingSummary.number_of_portions)
                 : "-"
             }
+            helper="Yield divided by portion."
           />
         </div>
       </div>
@@ -944,10 +950,10 @@ export default function RecipeBuilder({
 
 function CostCell({ label, value, helper }) {
   return (
-    <div className="card" style={{ background: "#f8fafc" }}>
-      <div style={{ color: "#6B7280", marginBottom: 4 }}>{label}</div>
-      <div style={{ fontWeight: 800, fontSize: 22 }}>{value}</div>
-      {helper && <div style={{ color: "#6B7280", fontSize: 12, marginTop: 4 }}>{helper}</div>}
+    <div className="metricMiniCard">
+      <div className="metricMiniLabel">{label}</div>
+      <div className="metricMiniValue">{value}</div>
+      {helper && <div className="metricMiniHelper">{helper}</div>}
     </div>
   );
 }
