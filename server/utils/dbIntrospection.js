@@ -3,6 +3,10 @@ const pool = require("../db");
 // Cache per-table column sets to reduce repeated information_schema hits.
 const columnCache = new Map();
 
+function resetDbIntrospectionCache() {
+  columnCache.clear();
+}
+
 async function tableExists(tableName) {
   const [rows] = await pool.query(
     "SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ? LIMIT 1",
@@ -32,6 +36,7 @@ async function getColumns(tableName) {
   return cols;
 }
 
+<<<<<<< HEAD
 function resetDbIntrospectionCache(tableName = null) {
   if (tableName) {
     columnCache.delete(tableName);
@@ -40,4 +45,6 @@ function resetDbIntrospectionCache(tableName = null) {
   columnCache.clear();
 }
 
+=======
+>>>>>>> 0c17a16 (Save local edits before pulling remote updates)
 module.exports = { tableExists, columnExists, getColumns, resetDbIntrospectionCache };
