@@ -1,0 +1,32 @@
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# Env files (keep examples)
+.env
+.env.* 
+!.env.example
+
+# Node
+**/node_modules/
+**/.cache/
+**/dist/
+**/build/
+**/coverage/
+
+# Vite
+**/.vite/
+
+# Misc
+*.swp
+
+# Runtime uploads
+server/uploads/
