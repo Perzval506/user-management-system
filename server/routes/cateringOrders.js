@@ -12,6 +12,81 @@ const round2 = (num) => Number(Number(num || 0).toFixed(2));
 
 router.use(requireAuth, requireAnyRole(["OWNER"]));
 
+function parseCateringOrderPayload(body = {}) {
+  const customerName = String(body?.customerName || "").trim();
+  const contactNumber = String(body?.contactNumber || "").trim() || null;
+  const eventDate = String(body?.eventDate || "").trim();
+  const eventTime = String(body?.eventTime || "").trim() || null;
+  const eventStartTime = String(body?.eventStartTime || body?.event_start_time || eventTime || "").trim() || null;
+  const eventEndTime = String(body?.eventEndTime || body?.event_end_time || "").trim() || null;
+  const venue = String(body?.venue || "").trim() || null;
+  const paxCount = Number(body?.paxCount || 0);
+  const quotePricePerPax = round2(body?.quotePricePerPax ?? body?.quote_price_per_pax ?? 0);
+  const notes = String(body?.notes || "").trim() || null;
+  const discountAmount = round2(body?.discountAmount || 0);
+  const depositAmount = round2(body?.depositAmount || 0);
+  const items = Array.isArray(body?.items) ? body.items : [];
+
+  if (!customerName) return { error: "customerName is required." };
+  if (!eventDate) return { error: "eventDate is required." };
+  if (!Number.isFinite(paxCount) || paxCount <= 0) return { error: "paxCount must be greater than 0." };
+  if (!Number.isFinite(quotePricePerPax) || quotePricePerPax < 0) {
+    return { error: "quotePricePerPax must be 0 or greater." };
+  }
+  if (!items.length) return { error: "At least one catering item is required." };
+
+  const cleanedItems = [];
+  for (const [index, item] of items.entries()) {
+    const menuItemId = item.menuItemId == null || item.menuItemId === "" ? null : Number(item.menuItemId);
+    const itemName = String(item.itemName || "").trim();
+    const quantity = Number(item.quantity);
+    const notesValue = String(item.notes || "").trim() || null;
+
+    if (menuItemId != null && (!Number.isFinite(menuItemId) || menuItemId <= 0)) {
+      return { error: `Catering item ${index + 1} has an invalid menu item.` };
+    }
+    if (!menuItemId && !itemName) {
+      return { error: `Catering item ${index + 1} needs a menu item or custom item name.` };
+    }
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      return { error: `Catering item ${index + 1} needs a quantity greater than 0.` };
+    }
+    cleanedItems.push({
+      menuItemId,
+      itemName,
+      quantity: round2(quantity),
+      unitPrice: 0,
+      lineTotal: 0,
+      notes: notesValue,
+    });
+  }
+
+  const subtotal = round2(Math.round(paxCount) * quotePricePerPax);
+  const totalAmount = round2(Math.max(subtotal - discountAmount, 0));
+  const finalDeposit = round2(Math.min(Math.max(depositAmount, 0), totalAmount));
+  const balanceAmount = round2(totalAmount - finalDeposit);
+
+  return {
+    value: {
+      customerName,
+      contactNumber,
+      eventDate,
+      eventStartTime,
+      eventEndTime,
+      venue,
+      paxCount,
+      quotePricePerPax,
+      notes,
+      discountAmount,
+      finalDeposit,
+      subtotal,
+      totalAmount,
+      balanceAmount,
+      cleanedItems,
+    },
+  };
+}
+
 async function getPurchaseRequestColumns() {
   if (!(await tableExists("purchase_requests"))) return {};
   return getColumns("purchase_requests");
@@ -525,6 +600,131 @@ router.post("/", async (req, res) => {
     await conn.rollback();
     console.error("POST /catering-orders failed:", err.message);
     res.status(500).json({ message: err?.message || "Failed to save catering order" });
+  } finally {
+    conn.release();
+  }
+});
+
+router.put("/:id", async (req, res) => {
+  const cateringOrderId = Number(req.params.id);
+  if (!Number.isFinite(cateringOrderId) || cateringOrderId <= 0) {
+    return res.status(400).json({ message: "Invalid catering order id." });
+  }
+
+  const parsed = parseCateringOrderPayload(req.body);
+  if (parsed.error) return res.status(400).json({ message: parsed.error });
+  const {
+    customerName,
+    contactNumber,
+    eventDate,
+    eventStartTime,
+    eventEndTime,
+    venue,
+    paxCount,
+    quotePricePerPax,
+    notes,
+    discountAmount,
+    finalDeposit,
+    subtotal,
+    totalAmount,
+    balanceAmount,
+    cleanedItems,
+  } = parsed.value;
+
+  const conn = await pool.getConnection();
+  try {
+    if (!(await tableExists("catering_orders")) || !(await tableExists("catering_order_items"))) {
+      return res.status(503).json({ message: "Catering setup is incomplete. Run the latest database migration first." });
+    }
+
+    const cateringCols = await getCateringOrderColumns();
+    await conn.beginTransaction();
+
+    const [[existingOrder]] = await conn.query(
+      `SELECT id, status${cateringCols.inventory_deducted_at ? ", inventory_deducted_at" : ""}
+         FROM catering_orders
+        WHERE id = ?
+        FOR UPDATE`,
+      [cateringOrderId]
+    );
+    if (!existingOrder) {
+      await conn.rollback();
+      return res.status(404).json({ message: "Catering order not found." });
+    }
+    if (existingOrder.inventory_deducted_at) {
+      await conn.rollback();
+      return res.status(409).json({ message: "This catering order already deducted inventory and can no longer be edited." });
+    }
+
+    const orderFields = [];
+    const orderValues = [];
+    const addOrderValue = (field, value) => {
+      orderFields.push(`${field} = ?`);
+      orderValues.push(value);
+    };
+    const addOrderSql = (field, sql) => {
+      orderFields.push(`${field} = ${sql}`);
+    };
+
+    addOrderValue("customer_name", customerName);
+    addOrderValue("contact_number", contactNumber);
+    addOrderValue("event_date", eventDate);
+    addOrderValue("event_time", eventStartTime);
+    if (cateringCols.event_start_time) addOrderValue("event_start_time", eventStartTime);
+    if (cateringCols.event_end_time) addOrderValue("event_end_time", eventEndTime);
+    addOrderValue("venue", venue);
+    addOrderValue("pax_count", Math.round(paxCount));
+    if (cateringCols.quote_price_per_pax) addOrderValue("quote_price_per_pax", quotePricePerPax);
+    addOrderValue("notes", notes);
+    addOrderValue("subtotal", subtotal);
+    addOrderValue("discount_amount", discountAmount);
+    addOrderValue("total_amount", totalAmount);
+    addOrderValue("deposit_amount", finalDeposit);
+    addOrderValue("balance_amount", balanceAmount);
+    addOrderSql("updated_at", "NOW()");
+
+    await conn.query(
+      `UPDATE catering_orders SET ${orderFields.join(", ")} WHERE id = ?`,
+      [...orderValues, cateringOrderId]
+    );
+
+    await conn.query("DELETE FROM catering_order_items WHERE catering_order_id = ?", [cateringOrderId]);
+    await conn.query(
+      `INSERT INTO catering_order_items
+        (catering_order_id, menu_item_id, item_name_snapshot, quantity, unit_price, line_total, notes, created_at)
+       VALUES ?`,
+      [
+        cleanedItems.map((item) => [
+          cateringOrderId,
+          item.menuItemId,
+          item.itemName || null,
+          item.quantity,
+          item.unitPrice,
+          item.lineTotal,
+          item.notes,
+          new Date(),
+        ]),
+      ]
+    );
+
+    await writeAuditLog(
+      {
+        ...buildActor(req),
+        module_name: "CATERING",
+        action_name: "UPDATE",
+        entity_type: "catering_order",
+        entity_id: cateringOrderId,
+        summary: `Updated catering order #${cateringOrderId} for ${customerName} totaling ${totalAmount.toFixed(2)}.`,
+      },
+      conn
+    );
+
+    await conn.commit();
+    res.json({ id: cateringOrderId });
+  } catch (err) {
+    await conn.rollback();
+    console.error("PUT /catering-orders/:id failed:", err.message);
+    res.status(500).json({ message: err?.message || "Failed to update catering order" });
   } finally {
     conn.release();
   }

@@ -32,11 +32,70 @@ function itemReducer(state, action) {
 
 const STATUSES = ["DRAFT", "QUOTED", "CONFIRMED", "IN_PROGRESS", "COMPLETED", "CANCELLED"];
 
+const emptyCateringForm = {
+  customerName: "",
+  contactNumber: "",
+  eventDate: "",
+  eventStartTime: "",
+  eventEndTime: "",
+  venue: "",
+  paxCount: "50",
+  quotePricePerPax: "0.00",
+  discountAmount: "0.00",
+  depositAmount: "0.00",
+  notes: "",
+};
+
 function formatEventTimeRange(order = {}) {
   const start = order.event_start_time || order.eventTime || order.event_time || "";
   const end = order.event_end_time || "";
   if (start && end) return `${start} - ${end}`;
   return start || end || "-";
+}
+
+function formFromOrder(order = {}) {
+  return {
+    customerName: order.customer_name || "",
+    contactNumber: order.contact_number || "",
+    eventDate: order.event_date ? String(order.event_date).slice(0, 10) : "",
+    eventStartTime: order.event_start_time || order.event_time || "",
+    eventEndTime: order.event_end_time || "",
+    venue: order.venue || "",
+    paxCount: String(order.pax_count || "50"),
+    quotePricePerPax: String(order.quote_price_per_pax ?? "0.00"),
+    discountAmount: String(order.discount_amount ?? "0.00"),
+    depositAmount: String(order.deposit_amount ?? "0.00"),
+    notes: order.notes || "",
+  };
+}
+
+function itemsFromOrder(items = []) {
+  if (!items.length) return [defaultItem()];
+  return items.map((item) => ({
+    key: item.id || Date.now() + Math.random(),
+    menuItemId: item.menu_item_id ? String(item.menu_item_id) : "",
+    itemName: item.menu_item_id ? "" : item.item_name_snapshot || "",
+    quantity: String(item.quantity ?? "1.00"),
+    notes: item.notes || "",
+  }));
+}
+
+function computeCateringTotals(form) {
+  const pax = Number(form.paxCount);
+  const quotePricePerPax = Number(form.quotePricePerPax);
+  const subtotal =
+    Number.isFinite(pax) && pax > 0 && Number.isFinite(quotePricePerPax) && quotePricePerPax >= 0
+      ? pax * quotePricePerPax
+      : 0;
+  const discount = Number(form.discountAmount);
+  const deposit = Number(form.depositAmount);
+  const total = Math.max(subtotal - (Number.isFinite(discount) ? discount : 0), 0);
+  const safeDeposit = Math.min(Math.max(Number.isFinite(deposit) ? deposit : 0, 0), total);
+  return {
+    subtotal,
+    total,
+    balance: total - safeDeposit,
+  };
 }
 
 export default function CateringOrders() {
@@ -52,41 +111,21 @@ export default function CateringOrders() {
   const [statusDraft, setStatusDraft] = useState("");
   const [statusTarget, setStatusTarget] = useState(null);
   const [creatingPurchaseRequest, setCreatingPurchaseRequest] = useState(false);
-  const [form, setForm] = useState({
-    customerName: "",
-    contactNumber: "",
-    eventDate: "",
-    eventStartTime: "",
-    eventEndTime: "",
-    venue: "",
-    paxCount: "50",
-    quotePricePerPax: "0.00",
-    discountAmount: "0.00",
-    depositAmount: "0.00",
-    notes: "",
-  });
+  const [editingDetail, setEditingDetail] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editForm, setEditForm] = useState(emptyCateringForm);
+  const [editItems, setEditItems] = useState([defaultItem()]);
+  const [form, setForm] = useState(emptyCateringForm);
 
-  const computed = useMemo(() => {
-    const pax = Number(form.paxCount);
-    const quotePricePerPax = Number(form.quotePricePerPax);
-    const subtotal =
-      Number.isFinite(pax) && pax > 0 && Number.isFinite(quotePricePerPax) && quotePricePerPax >= 0
-        ? pax * quotePricePerPax
-        : 0;
-    const discount = Number(form.discountAmount);
-    const deposit = Number(form.depositAmount);
-    const total = Math.max(subtotal - (Number.isFinite(discount) ? discount : 0), 0);
-    const safeDeposit = Math.min(Math.max(Number.isFinite(deposit) ? deposit : 0, 0), total);
-    return {
-      subtotal,
-      total,
-      balance: total - safeDeposit,
-    };
-  }, [form.depositAmount, form.discountAmount, form.paxCount, form.quotePricePerPax]);
+  const computed = useMemo(() => computeCateringTotals(form), [form]);
+  const editComputed = useMemo(() => computeCateringTotals(editForm), [editForm]);
 
   function closeDetails() {
     setDetail({ open: false, loading: false, order: null, items: [] });
     setRequirements({ loading: false, rows: [], warnings: [], summary: { ingredientCount: 0, shortageCount: 0 } });
+    setEditingDetail(false);
+    setEditForm(emptyCateringForm);
+    setEditItems([defaultItem()]);
   }
 
   const load = useCallback(async () => {
@@ -122,70 +161,92 @@ export default function CateringOrders() {
     dispatch({ type: "remove", key });
   }
 
-  async function submitOrder(event) {
-    event?.preventDefault();
-    const relevantItems = items.filter((item) => item.menuItemId || item.itemName || item.quantity);
-    if (!form.customerName.trim()) {
-      return toast.push({ type: "error", title: "Missing customer", message: "Customer name is required." });
+  function updateEditItem(key, patch) {
+    setEditItems((current) => current.map((item) => (item.key === key ? { ...item, ...patch } : item)));
+  }
+
+  function addEditItem() {
+    setEditItems((current) => [...current, defaultItem()]);
+  }
+
+  function removeEditItem(key) {
+    setEditItems((current) => (current.length === 1 ? [defaultItem()] : current.filter((item) => item.key !== key)));
+  }
+
+  function buildOrderPayload(sourceForm, sourceItems) {
+    const relevantItems = sourceItems.filter((item) => item.menuItemId || item.itemName || item.quantity);
+    if (!sourceForm.customerName.trim()) {
+      return { error: { title: "Missing customer", message: "Customer name is required." } };
     }
-    if (!form.eventDate) {
-      return toast.push({ type: "error", title: "Missing event date", message: "Event date is required." });
+    if (!sourceForm.eventDate) {
+      return { error: { title: "Missing event date", message: "Event date is required." } };
     }
-    if (!Number.isFinite(Number(form.paxCount)) || Number(form.paxCount) <= 0) {
-      return toast.push({ type: "error", title: "Invalid pax", message: "Pax count must be greater than 0." });
+    if (!Number.isFinite(Number(sourceForm.paxCount)) || Number(sourceForm.paxCount) <= 0) {
+      return { error: { title: "Invalid pax", message: "Pax count must be greater than 0." } };
     }
-    if (!Number.isFinite(Number(form.quotePricePerPax)) || Number(form.quotePricePerPax) < 0) {
-      return toast.push({ type: "error", title: "Invalid quote", message: "Price per guest must be 0 or greater." });
+    if (!Number.isFinite(Number(sourceForm.quotePricePerPax)) || Number(sourceForm.quotePricePerPax) < 0) {
+      return { error: { title: "Invalid quote", message: "Price per guest must be 0 or greater." } };
     }
     if (!relevantItems.length) {
-      return toast.push({ type: "error", title: "Missing items", message: "Add at least one catering item." });
+      return { error: { title: "Missing items", message: "Add at least one catering item." } };
     }
 
     for (let index = 0; index < relevantItems.length; index += 1) {
       const item = relevantItems[index];
       if (!item.menuItemId && !item.itemName.trim()) {
-        return toast.push({ type: "error", title: "Missing item", message: `Line ${index + 1} needs a menu item or custom item name.` });
+        return { error: { title: "Missing item", message: `Line ${index + 1} needs a menu item or custom item name.` } };
       }
       if (!Number.isFinite(Number(item.quantity)) || Number(item.quantity) <= 0) {
-        return toast.push({ type: "error", title: "Invalid quantity", message: `Line ${index + 1} needs a quantity greater than 0.` });
+        return { error: { title: "Invalid quantity", message: `Line ${index + 1} needs a quantity greater than 0.` } };
       }
     }
 
-    setSaving(true);
-    try {
-      await api.post("/catering-orders", {
-        customerName: form.customerName.trim(),
-        contactNumber: form.contactNumber.trim() || null,
-        eventDate: form.eventDate,
-        eventStartTime: form.eventStartTime.trim() || null,
-        eventEndTime: form.eventEndTime.trim() || null,
-        venue: form.venue.trim() || null,
-        paxCount: Number(form.paxCount),
-        quotePricePerPax: Number(form.quotePricePerPax || 0),
-        discountAmount: Number(form.discountAmount || 0),
-        depositAmount: Number(form.depositAmount || 0),
-        notes: form.notes.trim() || null,
+    return {
+      payload: {
+        customerName: sourceForm.customerName.trim(),
+        contactNumber: sourceForm.contactNumber.trim() || null,
+        eventDate: sourceForm.eventDate,
+        eventStartTime: sourceForm.eventStartTime.trim() || null,
+        eventEndTime: sourceForm.eventEndTime.trim() || null,
+        venue: sourceForm.venue.trim() || null,
+        paxCount: Number(sourceForm.paxCount),
+        quotePricePerPax: Number(sourceForm.quotePricePerPax || 0),
+        discountAmount: Number(sourceForm.discountAmount || 0),
+        depositAmount: Number(sourceForm.depositAmount || 0),
+        notes: sourceForm.notes.trim() || null,
         items: relevantItems.map((item) => ({
           menuItemId: item.menuItemId ? Number(item.menuItemId) : null,
           itemName: item.itemName.trim() || null,
           quantity: Number(item.quantity),
           notes: item.notes.trim() || null,
         })),
-      });
+      },
+    };
+  }
+
+  function startEditingDetail() {
+    if (!detail.order) return;
+    setEditForm(formFromOrder(detail.order));
+    setEditItems(itemsFromOrder(detail.items));
+    setEditingDetail(true);
+  }
+
+  function cancelEditingDetail() {
+    setEditingDetail(false);
+    setEditForm(emptyCateringForm);
+    setEditItems([defaultItem()]);
+  }
+
+  async function submitOrder(event) {
+    event?.preventDefault();
+    const { payload, error } = buildOrderPayload(form, items);
+    if (error) return toast.push({ type: "error", title: error.title, message: error.message });
+
+    setSaving(true);
+    try {
+      await api.post("/catering-orders", payload);
       toast.push({ type: "success", title: "Saved", message: "Catering order created." });
-      setForm({
-        customerName: "",
-        contactNumber: "",
-        eventDate: "",
-        eventStartTime: "",
-        eventEndTime: "",
-        venue: "",
-        paxCount: "50",
-        quotePricePerPax: "0.00",
-        discountAmount: "0.00",
-        depositAmount: "0.00",
-        notes: "",
-      });
+      setForm(emptyCateringForm);
       dispatch({ type: "reset" });
       await load();
     } catch (error) {
@@ -199,9 +260,34 @@ export default function CateringOrders() {
     }
   }
 
+  async function submitEditOrder(event) {
+    event?.preventDefault();
+    if (!detail.order?.id) return;
+    const { payload, error } = buildOrderPayload(editForm, editItems);
+    if (error) return toast.push({ type: "error", title: error.title, message: error.message });
+
+    setEditSaving(true);
+    try {
+      await api.put(`/catering-orders/${detail.order.id}`, payload);
+      toast.push({ type: "success", title: "Updated", message: "Catering order updated." });
+      setEditingDetail(false);
+      await openDetails(detail.order.id);
+      await load();
+    } catch (error) {
+      toast.push({
+        type: "error",
+        title: "Update failed",
+        message: error?.response?.data?.message || error.message || "Failed to update catering order",
+      });
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
   async function openDetails(id) {
     setDetail({ open: true, loading: true, order: null, items: [] });
     setRequirements({ loading: true, rows: [], warnings: [], summary: { ingredientCount: 0, shortageCount: 0 } });
+    setEditingDetail(false);
     try {
       const [detailResponse, requirementsResponse] = await Promise.all([
         api.get(`/catering-orders/${id}`),
@@ -470,9 +556,38 @@ export default function CateringOrders() {
           <div className="modalCard modalCard-lg" onClick={(event) => event.stopPropagation()}>
             <div className="modalHead">
               <h3 className="modalTitle">Catering Order Details</h3>
+              <div className="rowActions">
+                {detail.order && !editingDetail ? (
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={startEditingDetail}
+                    disabled={Boolean(detail.order.inventory_deducted_at)}
+                  >
+                    Edit Order
+                  </button>
+                ) : null}
+                <button type="button" className="btn btn-ghost" onClick={closeDetails}>
+                  Close
+                </button>
+              </div>
             </div>
             {detail.loading ? (
               <div>Loading...</div>
+            ) : detail.order && editingDetail ? (
+              <CateringEditForm
+                form={editForm}
+                setForm={setEditForm}
+                items={editItems}
+                menuItems={menuItems}
+                computed={editComputed}
+                saving={editSaving}
+                onSubmit={submitEditOrder}
+                onCancel={cancelEditingDetail}
+                onAddItem={addEditItem}
+                onUpdateItem={updateEditItem}
+                onRemoveItem={removeEditItem}
+              />
             ) : detail.order ? (
               <div className="formGrid">
                 <div className="formRow3">
@@ -631,5 +746,158 @@ function Info({ label, value }) {
       <div className="infoCardMiniLabel">{label}</div>
       <div className="infoCardMiniValue">{value}</div>
     </div>
+  );
+}
+
+function CateringEditForm({
+  form,
+  setForm,
+  items,
+  menuItems,
+  computed,
+  saving,
+  onSubmit,
+  onCancel,
+  onAddItem,
+  onUpdateItem,
+  onRemoveItem,
+}) {
+  return (
+    <form className="formGrid" onSubmit={onSubmit}>
+      <div className="formRow2">
+        <div>
+          <label>Customer name</label>
+          <input className="input" value={form.customerName} onChange={(event) => setForm((current) => ({ ...current, customerName: event.target.value }))} />
+        </div>
+        <div>
+          <label>Contact number</label>
+          <input className="input" value={form.contactNumber} onChange={(event) => setForm((current) => ({ ...current, contactNumber: event.target.value }))} />
+        </div>
+      </div>
+
+      <div className="formRow3">
+        <div>
+          <label>Event date</label>
+          <input className="input" type="date" value={form.eventDate} onChange={(event) => setForm((current) => ({ ...current, eventDate: event.target.value }))} />
+        </div>
+        <div>
+          <label>Start time</label>
+          <input className="input" type="time" value={form.eventStartTime} onChange={(event) => setForm((current) => ({ ...current, eventStartTime: event.target.value }))} />
+        </div>
+        <div>
+          <label>End time</label>
+          <input className="input" type="time" value={form.eventEndTime} onChange={(event) => setForm((current) => ({ ...current, eventEndTime: event.target.value }))} />
+        </div>
+      </div>
+
+      <div className="formRow3">
+        <div>
+          <label>Number of guests</label>
+          <input className="input text-right" type="number" min="1" step="1" value={form.paxCount} onChange={(event) => setForm((current) => ({ ...current, paxCount: event.target.value }))} />
+        </div>
+        <div>
+          <label>Price per guest</label>
+          <input className="input text-right" type="number" min="0.00" step="0.01" value={form.quotePricePerPax} onChange={(event) => setForm((current) => ({ ...current, quotePricePerPax: event.target.value }))} />
+        </div>
+        <div>
+          <label>Guest quote subtotal</label>
+          <input className="input text-right" value={formatMoney(computed.subtotal)} disabled />
+        </div>
+      </div>
+
+      <div>
+        <label>Venue</label>
+        <input className="input" value={form.venue} onChange={(event) => setForm((current) => ({ ...current, venue: event.target.value }))} />
+      </div>
+
+      <div className="tableWrap cateringItemsWrap">
+        <div className="tableTopBar">Food and Service Items</div>
+        <div className="tableSectionNote">Edit the food, service items, quantities, and notes for this catering order.</div>
+        <div className="tableScroller">
+          <table className="table table-wide">
+            <thead>
+              <tr>
+                <th>Menu item</th>
+                <th>Custom item</th>
+                <th className="text-right">Quantity</th>
+                <th>Notes</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item) => (
+                <tr key={item.key}>
+                  <td>
+                    <select
+                      className="input"
+                      value={item.menuItemId}
+                      onChange={(event) => {
+                        const selected = menuItems.find((row) => String(row.id) === String(event.target.value));
+                        onUpdateItem(item.key, {
+                          menuItemId: event.target.value,
+                          itemName: selected ? "" : item.itemName,
+                        });
+                      }}
+                    >
+                      <option value="">Custom item</option>
+                      {menuItems.map((menuItem) => (
+                        <option key={menuItem.id} value={menuItem.id}>{menuItem.menu_name}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    <input
+                      className="input"
+                      value={item.itemName}
+                      disabled={Boolean(item.menuItemId)}
+                      onChange={(event) => onUpdateItem(item.key, { itemName: event.target.value })}
+                      placeholder="Buffet setup, custom dish, etc."
+                    />
+                  </td>
+                  <td className="text-right">
+                    <input className="input text-right" type="number" min="0.01" step="0.01" value={item.quantity} onChange={(event) => onUpdateItem(item.key, { quantity: event.target.value })} />
+                  </td>
+                  <td>
+                    <input className="input" value={item.notes} onChange={(event) => onUpdateItem(item.key, { notes: event.target.value })} placeholder="Serving/setup note" />
+                  </td>
+                  <td>
+                    <button type="button" className="btn btn-ghost" onClick={() => onRemoveItem(item.key)}>Remove</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="formRow3">
+        <div>
+          <label>Discount</label>
+          <input className="input text-right" type="number" min="0.00" step="0.01" value={form.discountAmount} onChange={(event) => setForm((current) => ({ ...current, discountAmount: event.target.value }))} />
+        </div>
+        <div>
+          <label>Deposit</label>
+          <input className="input text-right" type="number" min="0.00" step="0.01" value={form.depositAmount} onChange={(event) => setForm((current) => ({ ...current, depositAmount: event.target.value }))} />
+        </div>
+        <div>
+          <label>Balance</label>
+          <input className="input text-right" value={formatMoney(computed.balance)} disabled />
+        </div>
+      </div>
+
+      <div>
+        <label>Notes</label>
+        <input className="input" value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Inclusions, setup notes, client requests." />
+      </div>
+
+      <div className="cateringActionsBar">
+        <button type="button" className="btn" onClick={onAddItem}>Add Item</button>
+        <div className="cateringActionsRight">
+          <span className="mono cateringTotal">Total {formatMoney(computed.total)}</span>
+          <button type="button" className="btn btn-ghost" onClick={onCancel}>Cancel</button>
+          <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? "Saving..." : "Save Changes"}</button>
+        </div>
+      </div>
+    </form>
   );
 }

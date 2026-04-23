@@ -337,6 +337,9 @@ export default function StaffManagement() {
         username: editing.username,
         role: editing.role,
       };
+      if (me?.id && Number(me.id) === Number(editing.id)) {
+        localStorage.setItem("user", JSON.stringify({ ...me, ...accountUpdated }));
+      }
       resetAccountForm();
       await loadUsers();
       setEditing(accountUpdated);

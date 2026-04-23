@@ -303,7 +303,7 @@ router.post("/", async (req, res) => {
     for (const [index, item] of saleItems.entries()) {
       const menuItemId = Number(item.menuItemId);
       const qty = Number(item.quantity);
-      const takeoutContainerIngredientId = Number(item.takeoutContainerIngredientId || 0);
+      const requestedContainerIngredientId = Number(item.takeoutContainerIngredientId || 0);
       const takeoutContainerQty = Number(item.takeoutContainerQty || 0);
       const takeoutContainerUnitPrice = Number(item.takeoutContainerUnitPrice || 0);
       if (!Number.isFinite(menuItemId) || menuItemId <= 0) {
@@ -334,14 +334,17 @@ router.post("/", async (req, res) => {
 
       const inventoryUsage = await buildInventoryUsageForMenuItem(conn, menuItemId, qty);
       let takeoutContainer = null;
-      if (takeoutContainerIngredientId > 0) {
+      const resolvedContainerIngredientId = requestedContainerIngredientId > 0 ? requestedContainerIngredientId : 0;
+      if (resolvedContainerIngredientId > 0) {
         if (!supportsContainerCharge(orderType)) {
           throw new Error(`Sale item ${index + 1} includes a takeout container, but the sale is not marked as TAKEOUT or DELIVERY.`);
         }
-        if (!Number.isFinite(takeoutContainerQty) || takeoutContainerQty <= 0) {
+        const resolvedContainerQty = takeoutContainerQty;
+        const resolvedContainerUnitPrice = takeoutContainerUnitPrice;
+        if (!Number.isFinite(resolvedContainerQty) || resolvedContainerQty <= 0) {
           throw new Error(`Sale item ${index + 1} needs a valid takeout container quantity.`);
         }
-        if (!Number.isFinite(takeoutContainerUnitPrice) || takeoutContainerUnitPrice < 0) {
+        if (!Number.isFinite(resolvedContainerUnitPrice) || resolvedContainerUnitPrice < 0) {
           throw new Error(`Sale item ${index + 1} needs a valid takeout container unit price.`);
         }
 
@@ -349,7 +352,7 @@ router.post("/", async (req, res) => {
           `SELECT id, ingredient_name, category, base_unit, quantity, current_ap_cost
              FROM ingredients
             WHERE id = ?`,
-          [takeoutContainerIngredientId]
+          [resolvedContainerIngredientId]
         );
         if (!containerRow) {
           throw new Error(`Takeout container for sale item ${index + 1} was not found.`);
@@ -358,7 +361,7 @@ router.post("/", async (req, res) => {
           throw new Error(`${containerRow.ingredient_name} is not tagged as a takeout container in inventory.`);
         }
 
-        const containerQtyUsed = round2(takeoutContainerQty);
+        const containerQtyUsed = round2(resolvedContainerQty);
         inventoryUsage.push({
           ingredientId: containerRow.id,
           ingredientName: containerRow.ingredient_name,
@@ -372,8 +375,8 @@ router.post("/", async (req, res) => {
           ingredientName: containerRow.ingredient_name,
           quantity: containerQtyUsed,
           unitPrice: round2(
-            Number.isFinite(takeoutContainerUnitPrice) && takeoutContainerUnitPrice >= 0
-              ? takeoutContainerUnitPrice
+            Number.isFinite(resolvedContainerUnitPrice) && resolvedContainerUnitPrice >= 0
+              ? resolvedContainerUnitPrice
               : Number(containerRow.current_ap_cost || 0)
           ),
         };

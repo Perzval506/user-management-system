@@ -245,10 +245,6 @@ CREATE TABLE IF NOT EXISTS menu_items (
   menu_type ENUM('FOOD','DRINK','ADD_ON') NOT NULL DEFAULT 'FOOD',
   -- Stored as a decimal ratio, e.g. 0.3000 = 30% target food cost.
   target_food_cost_percent DECIMAL(6,4) NULL,
-  -- Packaging add-ons used by costing so dine-in/takeout/delivery stay comparable.
-  dine_in_packaging_cost DECIMAL(12,2) NOT NULL DEFAULT 0.00,
-  takeout_packaging_cost DECIMAL(12,2) NOT NULL DEFAULT 0.00,
-  delivery_packaging_cost DECIMAL(12,2) NOT NULL DEFAULT 0.00,
   status ENUM('ACTIVE','INACTIVE') NOT NULL DEFAULT 'ACTIVE',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -524,6 +520,20 @@ CREATE TABLE IF NOT EXISTS supplier_quote_items (
     ON DELETE SET NULL,
   INDEX idx_supplier_quote_item_quote (supplier_quote_id),
   INDEX idx_supplier_quote_item_ingredient (ingredient_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS report_snapshots (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  snapshot_name VARCHAR(140) NOT NULL,
+  summary_json JSON NOT NULL,
+  payload_json JSON NOT NULL,
+  created_by_user_id INT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_report_snapshot_user
+    FOREIGN KEY (created_by_user_id) REFERENCES users(id)
+    ON DELETE SET NULL,
+  INDEX idx_report_snapshot_created (created_at),
+  INDEX idx_report_snapshot_user (created_by_user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS audit_logs (

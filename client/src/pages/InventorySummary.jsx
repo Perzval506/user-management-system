@@ -163,6 +163,22 @@ export default function InventorySummary() {
   }, [groupedRows, searchTerm, selectedCategory, sortedCategories, stockFilter]);
   const filteredCategories = Object.keys(filteredGroupedRows).sort(compareInventoryCategories);
   const filteredCount = filteredCategories.reduce((sum, category) => sum + (filteredGroupedRows[category] || []).length, 0);
+  const selectedTransferRow = useMemo(
+    () => rows.find((row) => String(row.id) === String(transferForm.ingredientId)) || null,
+    [rows, transferForm.ingredientId]
+  );
+  const transferSourceQty = useMemo(() => {
+    if (!selectedTransferRow) return 0;
+    return transferForm.fromLocation === "SHELF"
+      ? Number(selectedTransferRow.shelf_qty || 0)
+      : Number(selectedTransferRow.stockroom_qty || 0);
+  }, [selectedTransferRow, transferForm.fromLocation]);
+  const transferTargetQty = useMemo(() => {
+    if (!selectedTransferRow) return 0;
+    return transferForm.toLocation === "SHELF"
+      ? Number(selectedTransferRow.shelf_qty || 0)
+      : Number(selectedTransferRow.stockroom_qty || 0);
+  }, [selectedTransferRow, transferForm.toLocation]);
   const selectedAdjustmentRow = useMemo(
     () => rows.find((row) => String(row.id) === String(adjustmentForm.ingredientId)) || null,
     [rows, adjustmentForm.ingredientId]
@@ -603,6 +619,29 @@ export default function InventorySummary() {
                   </select>
                 </div>
               </div>
+              {selectedTransferRow && (
+                <div className="adjustmentAvailabilityCard">
+                  <div className="adjustmentAvailabilityTitle">Current quantity by location</div>
+                  <div className="adjustmentAvailabilityGrid">
+                    <div className="detailCell">
+                      <div className="detailCellLabel">Stockroom</div>
+                      <div className="detailCellValue mono">{formatNumber(selectedTransferRow.stockroom_qty || 0)}</div>
+                    </div>
+                    <div className="detailCell">
+                      <div className="detailCellLabel">Shelf</div>
+                      <div className="detailCellValue mono">{formatNumber(selectedTransferRow.shelf_qty || 0)}</div>
+                    </div>
+                    <div className="detailCell">
+                      <div className="detailCellLabel">{transferForm.fromLocation} available</div>
+                      <div className="detailCellValue mono">{formatNumber(transferSourceQty)}</div>
+                    </div>
+                    <div className="detailCell">
+                      <div className="detailCellLabel">{transferForm.toLocation} current</div>
+                      <div className="detailCellValue mono">{formatNumber(transferTargetQty)}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
               <div>
                 <label>Quantity</label>
                 <input

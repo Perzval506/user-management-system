@@ -245,10 +245,6 @@ CREATE TABLE IF NOT EXISTS menu_items (
   menu_type ENUM('FOOD','DRINK','ADD_ON') NOT NULL DEFAULT 'FOOD',
   -- Stored as a decimal ratio, e.g. 0.3000 = 30% target food cost.
   target_food_cost_percent DECIMAL(6,4) NULL,
-  -- Packaging add-ons used by costing so dine-in/takeout/delivery stay comparable.
-  dine_in_packaging_cost DECIMAL(12,2) NOT NULL DEFAULT 0.00,
-  takeout_packaging_cost DECIMAL(12,2) NOT NULL DEFAULT 0.00,
-  delivery_packaging_cost DECIMAL(12,2) NOT NULL DEFAULT 0.00,
   status ENUM('ACTIVE','INACTIVE') NOT NULL DEFAULT 'ACTIVE',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

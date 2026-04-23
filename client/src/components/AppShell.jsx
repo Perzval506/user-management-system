@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import "../styles/shell.css";
 import boydsLogo from "../assets/boyds-logo.png";
 import { ToastProvider, ToastViewport, useToast } from "./Toast";
+import { api } from "../services/api";
 import { getQuickActions, getQuickActionSelection, quickActionEvents } from "../utils/quickActions";
 import { applyUiPreferences, getFontSizePreference, getThemePreference } from "../utils/preferences";
 
@@ -34,6 +35,7 @@ function staffNavItemsForRole(role) {
     return [
       { to: "/staff", label: "My Profile", icon: "users" },
       { to: "/staff/sales", label: "Sales", icon: "sales" },
+      { to: "/staff/settings", label: "Settings", icon: "settings" },
     ];
   }
 
@@ -43,6 +45,7 @@ function staffNavItemsForRole(role) {
       { to: "/staff/ingredients", label: "Ingredients", icon: "box" },
       { to: "/staff/inventory-summary", label: "Stock Summary", icon: "box" },
       { to: "/staff/purchase-requests", label: "Purchase Requests", icon: "purchasing" },
+      { to: "/staff/settings", label: "Settings", icon: "settings" },
     ];
   }
 
@@ -326,8 +329,9 @@ export default function AppShell() {
   const location = useLocation();
   const user = safeUser();
   const role = user?.role || "UNKNOWN";
-  const name = user?.full_name || user?.name || user?.fullName || user?.username || "User";
   const profileDestination = role === "OWNER" ? "/admin/staff" : "/staff";
+  const [profileSummary, setProfileSummary] = useState(null);
+  const [avatarFailed, setAvatarFailed] = useState(false);
 
   const [openItems, setOpenItems] = useState(false);
   const [openPurchasingDrop, setOpenPurchasingDrop] = useState(false);
@@ -379,6 +383,54 @@ export default function AppShell() {
       fontSize: getFontSizePreference(),
     });
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadProfileSummary() {
+      if (!user?.id) {
+        setProfileSummary(null);
+        return;
+      }
+
+      try {
+        const res = await api.get("/profile/me");
+        if (cancelled) return;
+
+        const profile = res.data || {};
+        setProfileSummary(profile);
+
+        try {
+          localStorage.setItem(
+            "user",
+            JSON.stringify({
+              ...user,
+              full_name: profile.full_name || user.full_name,
+              avatar_url: profile.avatar_url || user.avatar_url || "",
+            })
+          );
+        } catch {
+          /* ignore */
+        }
+      } catch {
+        if (!cancelled) setProfileSummary(null);
+      }
+    }
+
+    loadProfileSummary();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, location.pathname]);
+
+  const displayName =
+    profileSummary?.full_name || user?.full_name || user?.name || user?.fullName || user?.username || "User";
+  const displayAvatarUrl = profileSummary?.avatar_url || user?.avatar_url || "";
+
+  useEffect(() => {
+    setAvatarFailed(false);
+  }, [displayAvatarUrl]);
 
   const onLogout = () => {
     setLogoutConfirmOpen(false);
@@ -641,9 +693,20 @@ export default function AppShell() {
               aria-label="Open my profile"
               title="Open my profile"
             >
-              <div className="avatar">{initials(name)}</div>
+              <div className="avatar">
+                {displayAvatarUrl && !avatarFailed ? (
+                  <img
+                    src={displayAvatarUrl}
+                    alt={`${displayName} avatar`}
+                    className="avatarImage"
+                    onError={() => setAvatarFailed(true)}
+                  />
+                ) : (
+                  initials(displayName)
+                )}
+              </div>
               <div>
-                <div className="profileName">{name}</div>
+                <div className="profileName">{displayName}</div>
                 <div className="profileRole">{role}</div>
               </div>
             </button>

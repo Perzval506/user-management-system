@@ -182,7 +182,7 @@ router.post("/:id/create-purchase-order", async (req, res) => {
     if (purchaseOrderCols.purchase_request_id) {
       purchaseOrderFields.splice(3, 0, "purchase_request_id");
       purchaseOrderPlaceholders.splice(3, 0, "?");
-      purchaseOrderValues.splice(2, 0, requestId);
+      purchaseOrderValues.splice(3, 0, requestId);
     }
 
     const [orderResult] = await conn.query(

@@ -189,9 +189,6 @@ export default function RecipeBuilder({
   onClose,
   currentSellingPrice = 0,
   targetFoodCostPercent = 0.3,
-  dineInPackagingCost = 0,
-  takeoutPackagingCost = 0,
-  deliveryPackagingCost = 0,
   onTargetChange,
 }) {
   const toast = useToast();
@@ -206,7 +203,6 @@ export default function RecipeBuilder({
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
-  const [costingOrderType, setCostingOrderType] = useState("DINE_IN");
   const [versionBusy, setVersionBusy] = useState(false);
   const draftKey = `recipe_draft:${menuId}`;
 
@@ -275,12 +271,8 @@ export default function RecipeBuilder({
       portion_size_grams: hasDefinedPortions ? portionSize : 1,
       target_food_cost_percent: Number(targetFoodCostPercent) || 0,
       current_selling_price: Number(currentSellingPrice) || 0,
-      order_type: costingOrderType,
-      dine_in_packaging_cost: Number(dineInPackagingCost) || 0,
-      takeout_packaging_cost: Number(takeoutPackagingCost) || 0,
-      delivery_packaging_cost: Number(deliveryPackagingCost) || 0,
     });
-  }, [lines, ingredientsOpt, recipeVersion, targetFoodCostPercent, currentSellingPrice, costingOrderType, dineInPackagingCost, takeoutPackagingCost, deliveryPackagingCost]);
+  }, [lines, ingredientsOpt, recipeVersion, targetFoodCostPercent, currentSellingPrice]);
   const costingTone = getCostingStatusTone(costingSummary?.status);
   const costingActionText = getCostingActionText(costingSummary, estimatedPortions);
 
@@ -573,16 +565,6 @@ export default function RecipeBuilder({
             <div className="recipeHeaderLabel">Version</div>
             <div className="recipeHeaderValue">{recipeVersion?.version_no ? `v${recipeVersion.version_no}` : "Draft"}</div>
           </div>
-          <div className="recipeHeaderBlock recipeHeaderControl">
-            <label className="recipeHeaderLabel">Order type</label>
-            <div className="recipeHeaderSelectWrap">
-          <select className="input" value={costingOrderType} onChange={(event) => setCostingOrderType(event.target.value)}>
-            <option value="DINE_IN">DINE IN</option>
-            <option value="TAKEOUT">TAKEOUT</option>
-            <option value="DELIVERY">DELIVERY</option>
-          </select>
-            </div>
-          </div>
           {dirty && (
             <div className="recipeDirtyPill">Unsaved changes</div>
           )}
@@ -762,12 +744,6 @@ export default function RecipeBuilder({
               </div>
             </div>
             <div className="metricMiniCard">
-              <div className="metricMiniLabel">Packaging</div>
-              <div className="metricMiniValue">
-                {formatMoney(costingSummary?.packaging_cost_per_portion || 0)}
-              </div>
-            </div>
-            <div className="metricMiniCard">
               <div className="metricMiniLabel">Suggested price</div>
               <div className="metricMiniValue">
                 {formatMoney(costingSummary?.suggested_price || 0)}
@@ -904,11 +880,6 @@ export default function RecipeBuilder({
             label="Total cost"
             value={formatMoney(costingSummary?.cost_per_portion || 0)}
             helper="Per serving."
-          />
-          <CostCell
-            label="Packaging"
-            value={formatMoney(costingSummary?.packaging_cost_per_portion || 0)}
-            helper={`Applied for ${String(costingSummary?.order_type || costingOrderType).replace("_", " ")}`}
           />
           <CostCell
             label="Suggested price"

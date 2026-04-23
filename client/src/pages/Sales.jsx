@@ -138,13 +138,14 @@ export default function Sales() {
         const containerUnitPrice = Number(line.takeoutContainerUnitPrice);
         if (!selected || !Number.isFinite(qty) || qty <= 0) return sum;
         const containerTotal =
-          supportsContainerCharge(form.orderType) &&
-          line.takeoutContainerId &&
-          Number.isFinite(containerQty) &&
-          containerQty > 0 &&
-          Number.isFinite(containerUnitPrice) &&
-          containerUnitPrice >= 0
-            ? containerQty * containerUnitPrice
+          supportsContainerCharge(form.orderType)
+            ? line.takeoutContainerId &&
+              Number.isFinite(containerQty) &&
+              containerQty > 0 &&
+              Number.isFinite(containerUnitPrice) &&
+              containerUnitPrice >= 0
+              ? containerQty * containerUnitPrice
+              : 0
             : 0;
         return sum + qty * price + containerTotal;
       }, 0),
@@ -156,6 +157,22 @@ export default function Sales() {
       ...current,
       lines: current.lines.map((line, lineIndex) => (lineIndex === index ? { ...line, ...patch } : line)),
     }));
+  }
+
+  function syncLineContainerPrice(line, orderType = form.orderType) {
+    if (!supportsContainerCharge(orderType) || !line.takeoutContainerId) {
+      return {
+        ...line,
+        takeoutContainerId: "",
+        takeoutContainerUnitPrice: "0.00",
+      };
+    }
+
+    return {
+      ...line,
+      takeoutContainerId: line.takeoutContainerId,
+      takeoutContainerQty: line.takeoutContainerQty || line.quantity || "1.00",
+    };
   }
 
   function addLine() {
@@ -175,16 +192,21 @@ export default function Sales() {
   async function submitSale(event) {
     event?.preventDefault();
     const cleanedLines = form.lines
-      .map((line) => ({
-        menuItemId: Number(line.menuItemId),
-        quantity: Number(line.quantity),
-        takeoutContainerIngredientId:
-          supportsContainerCharge(form.orderType) && Number(line.takeoutContainerId) > 0 ? Number(line.takeoutContainerId) : null,
-        takeoutContainerQty:
-          supportsContainerCharge(form.orderType) && Number(line.takeoutContainerId) > 0 ? Number(line.takeoutContainerQty) : 0,
-        takeoutContainerUnitPrice:
-          supportsContainerCharge(form.orderType) && Number(line.takeoutContainerId) > 0 ? Number(line.takeoutContainerUnitPrice) : 0,
-      }))
+      .map((line) => {
+        const effectiveContainerId = supportsContainerCharge(form.orderType)
+          ? Number(line.takeoutContainerId || 0)
+          : 0;
+        return {
+          menuItemId: Number(line.menuItemId),
+          quantity: Number(line.quantity),
+          takeoutContainerIngredientId: effectiveContainerId > 0 ? effectiveContainerId : null,
+          takeoutContainerQty: effectiveContainerId > 0 ? Number(line.takeoutContainerQty || line.quantity || 0) : 0,
+          takeoutContainerUnitPrice:
+            effectiveContainerId > 0
+              ? Number(line.takeoutContainerUnitPrice || 0)
+              : 0,
+        };
+      })
       .filter((line) => Number.isFinite(line.menuItemId) && line.menuItemId > 0);
 
     if (!cleanedLines.length) {
@@ -451,7 +473,7 @@ export default function Sales() {
                     orderType: event.target.value,
                     lines:
                       supportsContainerCharge(event.target.value)
-                        ? current.lines
+                        ? current.lines.map((line) => syncLineContainerPrice(line, event.target.value))
                         : current.lines.map((line) => ({
                             ...line,
                             takeoutContainerId: "",
@@ -493,7 +515,7 @@ export default function Sales() {
           <div className="tableTopBar">Items in This Sale</div>
           <div className="tableSectionNote">Prices use latest menu history.</div>
           <div className="tableScroller">
-              <table className="table table-wide">
+              <table className={`table table-wide salesEntryTable ${supportsContainerCharge(form.orderType) ? "salesEntryTable-withContainers" : "salesEntryTable-simple"}`}>
                 <thead>
                   <tr>
                     <th>Menu item</th>
@@ -508,17 +530,19 @@ export default function Sales() {
                 <tbody>
                   {form.lines.map((line, index) => {
                     const selected = menuItems.find((item) => String(item.id) === String(line.menuItemId));
+                    const effectiveContainerId = line.takeoutContainerId;
                     const qty = Number(line.quantity);
                     const containerQty = Number(line.takeoutContainerQty);
                     const containerUnitPrice = Number(line.takeoutContainerUnitPrice);
                     const containerTotal =
-                      supportsContainerCharge(form.orderType) &&
-                      line.takeoutContainerId &&
-                      Number.isFinite(containerQty) &&
-                      containerQty > 0 &&
-                      Number.isFinite(containerUnitPrice) &&
-                      containerUnitPrice >= 0
-                        ? containerQty * containerUnitPrice
+                      supportsContainerCharge(form.orderType)
+                        ? effectiveContainerId &&
+                          Number.isFinite(containerQty) &&
+                          containerQty > 0 &&
+                          Number.isFinite(containerUnitPrice) &&
+                          containerUnitPrice >= 0
+                          ? containerQty * containerUnitPrice
+                          : 0
                         : 0;
                     const lineTotal = (Number.isFinite(qty) && qty > 0 ? qty * Number(selected?.selling_price || 0) : 0) + containerTotal;
 
@@ -528,7 +552,12 @@ export default function Sales() {
                           <select
                             className="input"
                             value={line.menuItemId}
-                            onChange={(event) => updateLine(index, { menuItemId: event.target.value })}
+                            onChange={(event) => {
+                              const nextMenuItemId = event.target.value;
+                              updateLine(index, {
+                                menuItemId: nextMenuItemId,
+                              });
+                            }}
                           >
                             <option value="">Select menu item</option>
                             {menuItems.map((item) => (
@@ -545,7 +574,12 @@ export default function Sales() {
                             min="0.01"
                             step="0.01"
                             value={line.quantity}
-                            onChange={(event) => updateLine(index, { quantity: event.target.value })}
+                            onChange={(event) => updateLine(index, {
+                              quantity: event.target.value,
+                              takeoutContainerQty: line.takeoutContainerId
+                                ? event.target.value
+                                : line.takeoutContainerQty,
+                            })}
                           />
                         </td>
                         <td className="text-right mono">{selected?.selling_price != null ? formatMoney(selected.selling_price) : "-"}</td>
@@ -554,17 +588,18 @@ export default function Sales() {
                             <div className="salesContainerGrid">
                               <select
                                 className="input"
-                                value={line.takeoutContainerId}
+                                value={effectiveContainerId}
                                 onChange={(event) => {
-                                  const selectedContainer = containerItems.find((item) => String(item.id) === String(event.target.value));
                                   updateLine(index, {
                                     takeoutContainerId: event.target.value,
                                     takeoutContainerQty: event.target.value ? line.takeoutContainerQty || line.quantity || "1.00" : "1.00",
-                                    takeoutContainerUnitPrice: selectedContainer ? String(Number(selectedContainer.unitPrice || 0).toFixed(2)) : "0.00",
+                                    takeoutContainerUnitPrice: event.target.value ? line.takeoutContainerUnitPrice : "0.00",
                                   });
                                 }}
                               >
-                                <option value="">No container charge</option>
+                                <option value="">
+                                  No container charge
+                                </option>
                                 {containerItems.map((item) => (
                                   <option key={item.id} value={item.id}>
                                     {String(item.ingredient_name || "").toUpperCase()} [{item.base_unit || "-"}]
@@ -629,7 +664,7 @@ export default function Sales() {
             <div className="tableLoading">Loading...</div>
           ) : (
             <div className="tableScroller">
-              <table className="table table-wide-xl">
+              <table className="table table-wide-xl salesHistoryTable">
                 <thead>
                   <tr>
                     <th>Guest Check</th>
@@ -683,7 +718,7 @@ export default function Sales() {
         <div className="tableWrap">
           <div className="tableTopBar">Revenue Breakdown</div>
           <div className="tableScroller">
-            <table className="table">
+            <table className="table salesBreakdownTable">
               <thead>
                 <tr>
                   <th>Menu item</th>

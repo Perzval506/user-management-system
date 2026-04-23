@@ -935,6 +935,16 @@ body{
   background: linear-gradient(145deg, rgba(var(--primary-rgb), 0.24), rgba(var(--primary-rgb), 0.12));
   color: var(--primary-active);
   border: 1px solid rgba(var(--primary-rgb), 0.32);
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+
+.avatarImage{
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
 }
 
 .profileName{
@@ -1753,6 +1763,73 @@ body{
   display: grid;
   gap: 8px;
 }
+
+.salesEntryTable,
+.salesHistoryTable,
+.salesBreakdownTable{
+  table-layout: fixed;
+}
+
+.salesEntryTable th,
+.salesEntryTable td,
+.salesHistoryTable th,
+.salesHistoryTable td,
+.salesBreakdownTable th,
+.salesBreakdownTable td{
+  vertical-align: middle;
+}
+
+.salesEntryTable-simple th:nth-child(1),
+.salesEntryTable-simple td:nth-child(1){ width: 31%; }
+.salesEntryTable-simple th:nth-child(2),
+.salesEntryTable-simple td:nth-child(2){ width: 25%; }
+.salesEntryTable-simple th:nth-child(3),
+.salesEntryTable-simple td:nth-child(3){ width: 15%; }
+.salesEntryTable-simple th:nth-child(4),
+.salesEntryTable-simple td:nth-child(4){ width: 15%; }
+.salesEntryTable-simple th:nth-child(5),
+.salesEntryTable-simple td:nth-child(5){ width: 14%; }
+
+.salesEntryTable-withContainers th:nth-child(1),
+.salesEntryTable-withContainers td:nth-child(1){ width: 22%; }
+.salesEntryTable-withContainers th:nth-child(2),
+.salesEntryTable-withContainers td:nth-child(2){ width: 16%; }
+.salesEntryTable-withContainers th:nth-child(3),
+.salesEntryTable-withContainers td:nth-child(3){ width: 12%; }
+.salesEntryTable-withContainers th:nth-child(4),
+.salesEntryTable-withContainers td:nth-child(4){ width: 22%; }
+.salesEntryTable-withContainers th:nth-child(5),
+.salesEntryTable-withContainers td:nth-child(5){ width: 11%; }
+.salesEntryTable-withContainers th:nth-child(6),
+.salesEntryTable-withContainers td:nth-child(6){ width: 10%; }
+.salesEntryTable-withContainers th:nth-child(7),
+.salesEntryTable-withContainers td:nth-child(7){ width: 7%; }
+
+.salesHistoryTable th:nth-child(1),
+.salesHistoryTable td:nth-child(1){ width: 11%; }
+.salesHistoryTable th:nth-child(2),
+.salesHistoryTable td:nth-child(2){ width: 17%; }
+.salesHistoryTable th:nth-child(3),
+.salesHistoryTable td:nth-child(3){ width: 12%; }
+.salesHistoryTable th:nth-child(4),
+.salesHistoryTable td:nth-child(4){ width: 13%; }
+.salesHistoryTable th:nth-child(5),
+.salesHistoryTable td:nth-child(5){ width: 15%; }
+.salesHistoryTable th:nth-child(6),
+.salesHistoryTable td:nth-child(6){ width: 7%; }
+.salesHistoryTable th:nth-child(7),
+.salesHistoryTable td:nth-child(7){ width: 9%; }
+.salesHistoryTable th:nth-child(8),
+.salesHistoryTable td:nth-child(8){ width: 10%; }
+.salesHistoryTable th:nth-child(9),
+.salesHistoryTable td:nth-child(9){ width: 6%; }
+
+.salesBreakdownTable th:nth-child(1),
+.salesBreakdownTable td:nth-child(1){ width: 42%; }
+.salesBreakdownTable th:nth-child(2),
+.salesBreakdownTable td:nth-child(2){ width: 29%; }
+.salesBreakdownTable th:nth-child(3),
+.salesBreakdownTable td:nth-child(3){ width: 29%; }
 
 .salesActionsBar{
   display: flex;
@@ -3157,7 +3234,7 @@ body{
   align-content: center;
   justify-items: center;
   padding: clamp(16px, 3vh, 32px) clamp(10px, 2vw, 22px);
-  z-index: 120000;
+  z-index: 2147483000;
   background: rgba(15, 23, 42, 0.24);
   backdrop-filter: blur(3px) saturate(104%);
   -webkit-backdrop-filter: blur(3px) saturate(104%);
@@ -3167,6 +3244,8 @@ body{
 
 .modalCard{
   width: 100%;
+  position: relative;
+  z-index: 1;
   background: var(--surface);
   border-radius: 16px;
   padding: 16px;

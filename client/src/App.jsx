@@ -69,6 +69,7 @@ export default function App() {
       <Route element={<ProtectedRoute allowedRoles={["CASHIER", "STOCKROOM_STAFF"]} />}>
         <Route element={<AppShell />}>
           <Route path="/staff" element={<Staff />} />
+          <Route path="/staff/settings" element={<Settings />} />
 
           <Route element={<ProtectedRoute allowedRoles={["CASHIER"]} />}>
             <Route path="/staff/sales" element={<Sales />} />

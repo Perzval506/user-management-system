@@ -12,9 +12,6 @@ const emptyForm = {
   price: "",
   size: "",
   target_food_cost_percent: 0.3,
-  dine_in_packaging_cost: "0.00",
-  takeout_packaging_cost: "0.00",
-  delivery_packaging_cost: "0.00",
 };
 
 const emptyPromoForm = {
@@ -77,8 +74,8 @@ export default function AdminMenu() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get("/menu");
-      setItems(res.data || []);
+      const menuRes = await api.get("/menu");
+      setItems(menuRes.data || []);
     } catch (error) {
       toast.push({
         type: "error",
@@ -124,9 +121,6 @@ export default function AdminMenu() {
       price: "",
       size: "",
       target_food_cost_percent: row.target_food_cost_percent ?? 0.3,
-      dine_in_packaging_cost: row.dine_in_packaging_cost != null ? String(row.dine_in_packaging_cost) : "0.00",
-      takeout_packaging_cost: row.takeout_packaging_cost != null ? String(row.takeout_packaging_cost) : "0.00",
-      delivery_packaging_cost: row.delivery_packaging_cost != null ? String(row.delivery_packaging_cost) : "0.00",
     });
     setRecipeCreateForm({
       recipe_name: row.menu_name || "",
@@ -205,11 +199,6 @@ export default function AdminMenu() {
         if (Number.isFinite(tfcp)) {
           payload.target_food_cost_percent = tfcp;
         }
-        for (const field of ["dine_in_packaging_cost", "takeout_packaging_cost", "delivery_packaging_cost"]) {
-          const parsed = parseFloat(form[field]);
-          if (Number.isFinite(parsed)) payload[field] = parsed;
-        }
-
         if (form.price !== undefined && form.price !== null && form.price !== "") {
           const parsedPrice = parseFloat(form.price);
           if (Number.isNaN(parsedPrice)) {
@@ -237,9 +226,6 @@ export default function AdminMenu() {
           status: form.status || "ACTIVE",
           menu_type: form.menu_type || "FOOD",
           target_food_cost_percent: Number.isFinite(tfcp) ? tfcp : null,
-          dine_in_packaging_cost: Number.isFinite(parseFloat(form.dine_in_packaging_cost)) ? parseFloat(form.dine_in_packaging_cost) : 0,
-          takeout_packaging_cost: Number.isFinite(parseFloat(form.takeout_packaging_cost)) ? parseFloat(form.takeout_packaging_cost) : 0,
-          delivery_packaging_cost: Number.isFinite(parseFloat(form.delivery_packaging_cost)) ? parseFloat(form.delivery_packaging_cost) : 0,
         });
         toast.push({
           type: "success",
@@ -411,9 +397,6 @@ export default function AdminMenu() {
         status: editingItem.status || "ACTIVE",
         menu_type: editingItem.menu_type || form.menu_type || "FOOD",
         target_food_cost_percent: tfcp,
-        dine_in_packaging_cost: Number.isFinite(parseFloat(form.dine_in_packaging_cost)) ? parseFloat(form.dine_in_packaging_cost) : 0,
-        takeout_packaging_cost: Number.isFinite(parseFloat(form.takeout_packaging_cost)) ? parseFloat(form.takeout_packaging_cost) : 0,
-        delivery_packaging_cost: Number.isFinite(parseFloat(form.delivery_packaging_cost)) ? parseFloat(form.delivery_packaging_cost) : 0,
       });
       toast.push({
         type: "success",
@@ -809,7 +792,7 @@ export default function AdminMenu() {
               </div>
             )}
 
-            {(mode === "create" || activeSection === MANAGE_SECTIONS.details) && (
+            {mode === "create" && (
               <form onSubmit={onSubmit} className="formGrid modalSection menuManageForm">
                 <div>
                   <label>Menu Name</label>
@@ -895,48 +878,6 @@ export default function AdminMenu() {
                   </div>
                 </div>
 
-                <div className="formRow3">
-                  <div>
-                    <label>Dine-in packaging cost</label>
-                    <input
-                      name="dine_in_packaging_cost"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={form.dine_in_packaging_cost}
-                      onChange={onChange}
-                      className="input"
-                      placeholder="0.00"
-                    />
-                  </div>
-                  <div>
-                    <label>Takeout packaging cost</label>
-                    <input
-                      name="takeout_packaging_cost"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={form.takeout_packaging_cost}
-                      onChange={onChange}
-                      className="input"
-                      placeholder="0.00"
-                    />
-                  </div>
-                  <div>
-                    <label>Delivery packaging cost</label>
-                    <input
-                      name="delivery_packaging_cost"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={form.delivery_packaging_cost}
-                      onChange={onChange}
-                      className="input"
-                      placeholder="0.00"
-                    />
-                  </div>
-                </div>
-
                 <div className="formActions">
                   <button type="button" className="btn btn-ghost" onClick={closeModal}>
                     Cancel
@@ -948,9 +889,53 @@ export default function AdminMenu() {
               </form>
             )}
 
+            {mode === "edit" && activeSection === MANAGE_SECTIONS.details && (
+              <div className="modalSection">
+                <div className="card">
+                  <div className="recipeSectionHead recipeSectionHead-compact">
+                    <div>
+                      <div className="recipeSectionTitle">Menu Summary</div>
+                      <div className="recipeSectionSub">Read-only overview of the current menu item setup.</div>
+                    </div>
+                  </div>
+                  <div className="adjustmentAvailabilityGrid">
+                    <div className="detailCell">
+                      <div className="detailCellLabel">Menu name</div>
+                      <div className="detailCellValue">{editingItem?.menu_name || "-"}</div>
+                    </div>
+                    <div className="detailCell">
+                      <div className="detailCellLabel">Status</div>
+                      <div className="detailCellValue">{editingItem?.status || "-"}</div>
+                    </div>
+                    <div className="detailCell">
+                      <div className="detailCellLabel">Menu type</div>
+                      <div className="detailCellValue">{editingItem?.menu_type || "-"}</div>
+                    </div>
+                    <div className="detailCell">
+                      <div className="detailCellLabel">Recipe link</div>
+                      <div className="detailCellValue">{hasRecipe ? "Linked" : "Not linked"}</div>
+                    </div>
+                    <div className="detailCell" style={{ gridColumn: "1 / -1" }}>
+                      <div className="detailCellLabel">Description</div>
+                      <div className="detailCellValue">{editingItem?.description || "No description added."}</div>
+                    </div>
+                    <div className="detailCell">
+                      <div className="detailCellLabel">Current selling price</div>
+                      <div className="detailCellValue">{editingItem?.selling_price != null ? formatMoney(editingItem.selling_price) : "No price set"}</div>
+                    </div>
+                    <div className="detailCell">
+                      <div className="detailCellLabel">Target ingredient cost</div>
+                      <div className="detailCellValue">
+                        {form.target_food_cost_percent != null ? `${formatNumber((Number(form.target_food_cost_percent) || 0) * 100)}%` : "-"}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {mode === "edit" && activeSection === MANAGE_SECTIONS.pricing && (
               <div className="formGrid modalSection">
-                {/* New consolidation: pricing edits now live inside the same manage modal. */}
                 <div>
                   <label>Current selling price</label>
                   <div className="input">
@@ -1024,50 +1009,6 @@ export default function AdminMenu() {
                     </button>
                   </div>
                   <div className="formNote">Example: 0.35 = 35%.</div>
-                </div>
-
-                <div className="formRow2">
-                  <div>
-                    <label>Dine-in packaging cost</label>
-                    <input
-                      className="input"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      name="dine_in_packaging_cost"
-                      value={form.dine_in_packaging_cost}
-                      onChange={onChange}
-                      placeholder="0.00"
-                    />
-                  </div>
-                  <div>
-                    <label>Takeout packaging cost</label>
-                    <input
-                      className="input"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      name="takeout_packaging_cost"
-                      value={form.takeout_packaging_cost}
-                      onChange={onChange}
-                      placeholder="0.00"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label>Delivery packaging cost</label>
-                  <input
-                    className="input"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    name="delivery_packaging_cost"
-                    value={form.delivery_packaging_cost}
-                    onChange={onChange}
-                    placeholder="0.00"
-                  />
-                  <div className="formNote">Containers, utensils, bags, etc.</div>
                 </div>
 
                 <div className="formActions">
@@ -1304,9 +1245,6 @@ export default function AdminMenu() {
                         ? parseFloat(form.target_food_cost_percent)
                         : 0.3
                     }
-                    dineInPackagingCost={parseFloat(form.dine_in_packaging_cost) || 0}
-                    takeoutPackagingCost={parseFloat(form.takeout_packaging_cost) || 0}
-                    deliveryPackagingCost={parseFloat(form.delivery_packaging_cost) || 0}
                     onTargetChange={(next) =>
                       setForm((prev) => ({
                         ...prev,

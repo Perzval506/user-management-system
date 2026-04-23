@@ -13,6 +13,28 @@ const LOW_STOCK_THRESHOLD = 5;
 const PROFIT_ALERT_STATUSES = new Set(["Loss", "Low Profit"]);
 const REPORT_TIMEZONE = "Asia/Manila";
 
+async function ensureReportSnapshotsTable() {
+  if (await tableExists("report_snapshots")) return true;
+
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS report_snapshots (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      snapshot_name VARCHAR(140) NOT NULL,
+      summary_json JSON NOT NULL,
+      payload_json JSON NOT NULL,
+      created_by_user_id INT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT fk_report_snapshot_user
+        FOREIGN KEY (created_by_user_id) REFERENCES users(id)
+        ON DELETE SET NULL,
+      INDEX idx_report_snapshot_created (created_at),
+      INDEX idx_report_snapshot_user (created_by_user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+  );
+
+  return tableExists("report_snapshots");
+}
+
 function round2(value) {
   return Number(Number(value || 0).toFixed(2));
 }
@@ -551,7 +573,7 @@ router.get("/", async (_req, res) => {
 
 router.get("/snapshots", async (_req, res) => {
   try {
-    if (!(await tableExists("report_snapshots"))) {
+    if (!(await ensureReportSnapshotsTable())) {
       return res.json([]);
     }
     const [rows] = await pool.query(
@@ -590,7 +612,7 @@ router.get("/snapshots", async (_req, res) => {
 
 router.post("/snapshots", async (req, res) => {
   const snapshotName = String(req.body?.snapshot_name || "").trim().slice(0, 140);
-  if (!(await tableExists("report_snapshots"))) {
+  if (!(await ensureReportSnapshotsTable())) {
     return res.status(503).json({ message: "Report snapshots are unavailable until the latest database setup is applied." });
   }
   const conn = await pool.getConnection();

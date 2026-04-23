@@ -14,7 +14,10 @@ router.post("/login", async (req, res) => {
       return res.status(400).json({ message: "Username and password required" });
 
     const [rows] = await pool.execute(
-      "SELECT id, username, password_hash, role, status, full_name FROM users WHERE username = ?",
+      `SELECT u.id, u.username, u.password_hash, u.role, u.status, u.full_name, up.avatar_url
+       FROM users u
+       LEFT JOIN user_profiles up ON up.user_id = u.id
+       WHERE u.username = ?`,
       [username]
     );
 
@@ -50,7 +53,13 @@ router.post("/login", async (req, res) => {
 
     res.json({
       token,
-      user: { id: user.id, username: user.username, role: user.role, full_name: user.full_name },
+      user: {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        full_name: user.full_name,
+        avatar_url: user.avatar_url,
+      },
     });
   } catch (err) {
     console.error("/api/auth/login error:", err);

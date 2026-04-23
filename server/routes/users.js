@@ -84,35 +84,73 @@ router.post("/", async (req, res) => {
 router.put("/:id", async (req, res) => {
   const { id } = req.params;
   const { full_name, username, role, password } = req.body;
+  const cleanFullName = String(full_name || "").trim();
+  const cleanUsername = String(username || "").trim();
 
-  if (!full_name || !username || !role)
+  if (!cleanFullName || !cleanUsername || !role)
     return res.status(400).json({ message: "full_name, username, role required" });
   if (!ALLOWED_ROLES.includes(role))
     return res.status(400).json({ message: "Invalid role" });
 
-  if (password && password.trim().length > 0) {
-    const password_hash = await bcrypt.hash(password, 10);
-    await pool.execute(
-      "UPDATE users SET full_name=?, username=?, role=?, password_hash=? WHERE id=?",
-      [full_name, username, role, password_hash, id]
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const [[existingUser]] = await conn.execute(
+      "SELECT id FROM users WHERE id = ? FOR UPDATE",
+      [id]
     );
-  } else {
-    await pool.execute(
-      "UPDATE users SET full_name=?, username=?, role=? WHERE id=?",
-      [full_name, username, role, id]
+    if (!existingUser) {
+      await conn.rollback();
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const [[duplicateUser]] = await conn.execute(
+      "SELECT id FROM users WHERE username = ? AND id <> ? LIMIT 1",
+      [cleanUsername, id]
     );
+    if (duplicateUser) {
+      await conn.rollback();
+      return res.status(409).json({ message: "Username already exists" });
+    }
+
+    if (password && password.trim().length > 0) {
+      const password_hash = await bcrypt.hash(password, 10);
+      await conn.execute(
+        "UPDATE users SET full_name=?, username=?, role=?, password_hash=? WHERE id=?",
+        [cleanFullName, cleanUsername, role, password_hash, id]
+      );
+    } else {
+      await conn.execute(
+        "UPDATE users SET full_name=?, username=?, role=? WHERE id=?",
+        [cleanFullName, cleanUsername, role, id]
+      );
+    }
+
+    await writeAuditLog(
+      {
+        ...buildActor(req),
+        module_name: "STAFF",
+        action_name: "UPDATE",
+        entity_type: "user",
+        entity_id: Number(id),
+        summary: `Updated staff account for ${cleanFullName}.`,
+      },
+      conn
+    );
+
+    await conn.commit();
+    res.json({ message: "User updated" });
+  } catch (err) {
+    await conn.rollback();
+    if (err?.code === "ER_DUP_ENTRY" || String(err.message).includes("Duplicate")) {
+      return res.status(409).json({ message: "Username already exists" });
+    }
+    console.error("PUT /users/:id failed:", err.message);
+    res.status(500).json({ message: "Failed to update user" });
+  } finally {
+    conn.release();
   }
-
-  await writeAuditLog({
-    ...buildActor(req),
-    module_name: "STAFF",
-    action_name: "UPDATE",
-    entity_type: "user",
-    entity_id: Number(id),
-    summary: `Updated staff account for ${full_name}.`,
-  });
-
-  res.json({ message: "User updated" });
 });
 
 // PATCH /api/users/:id/status
